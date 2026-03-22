@@ -29,7 +29,7 @@ def save_run_config(run_output_dir: Path, config_data: dict) -> Path:
     
     # タイムスタンプを追加
     config_data["timestamp"] = datetime.now().isoformat()
-    config_data["app_version"] = "v0.5.0"
+    config_data["app_version"] = "v0.1.6"
     
     with open(path, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=4, ensure_ascii=False)
@@ -38,11 +38,24 @@ def save_run_config(run_output_dir: Path, config_data: dict) -> Path:
 
 def save_sample_sheet(run_output_dir: Path, sample_df: pd.DataFrame) -> Path:
     """
-    実行に使用したサンプル一覧を保存する。
+    実行に使用した全サンプル情報を保存する (入力パス等を含む完全版)。
     """
     names = get_default_output_filenames()
     path = run_output_dir / names["sample_sheet"]
     sample_df.to_csv(path, index=False)
+    return path
+
+
+def save_sample_metadata_csv(run_output_dir: Path, sample_df: pd.DataFrame) -> Path:
+    """
+    Reporter 向けの軽量なメタデータ表を保存する。
+    FASTQ パス等を除き、生物学的な条件設定のみを抽出する。
+    """
+    from src.sample_parser import METADATA_COLUMNS
+    cols = ["sample_id"] + [c for c in METADATA_COLUMNS if c in sample_df.columns]
+    
+    path = run_output_dir / "sample_metadata.csv"
+    sample_df[cols].to_csv(path, index=False)
     return path
 
 
@@ -65,6 +78,7 @@ def build_output_manifest(
         {"label": "Run Summary (JSON)", "path": quant_results.get("run_summary_json")},
         {"label": "Run Config (JSON)", "path": str(config_path)},
         {"label": "Sample Sheet (CSV)", "path": str(sample_sheet_path)},
+        {"label": "Sample Metadata (CSV)", "path": quant_results.get("sample_metadata_csv")},
         {"label": "Sample QC Summary (CSV)", "path": quant_results.get("qc_summary_csv")},
         {"label": "Execution Log (Log)", "path": str(master_log_path)},
     ]

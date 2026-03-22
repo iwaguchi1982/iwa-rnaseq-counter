@@ -8,6 +8,7 @@ import pandas as pd
 
 from src.config import get_default_output_filenames
 from src.qc import evaluate_sample_qc
+from src.run_artifacts import save_sample_metadata_csv
 
 
 def load_tx2gene_map(tx2gene_path: str) -> pd.DataFrame:
@@ -97,10 +98,13 @@ def save_quant_tables(
             df.to_csv(path)
             output_paths[f"{key}_csv"] = str(path)
 
-    # 4. Save sample sheet and QC summary
+    # 4. Save sample sheet and metadata
     sample_sheet_path = result_dir / "sample_sheet.csv"
     sample_df.to_csv(sample_sheet_path, index=False)
     output_paths["sample_sheet_csv"] = str(sample_sheet_path)
+
+    metadata_path = save_sample_metadata_csv(result_dir, sample_df)
+    output_paths["sample_metadata_csv"] = str(metadata_path)
 
     # QC Summary
     qc_data = []
@@ -117,6 +121,7 @@ def save_quant_tables(
             "QC": qc["icon"],
             "Sample": o["sample_id"],
             "Group": sample_df[sample_df["sample_id"] == o["sample_id"]]["group"].values[0] if "group" in sample_df.columns else "",
+            "Condition": sample_df[sample_df["sample_id"] == o["sample_id"]]["condition"].values[0] if "condition" in sample_df.columns else "",
             "Mapped%": f"{qc['mapping_rate']:.2f}%",
             "Decoy%": f"{qc['decoy_rate']:.1f}%",
             "Filt%": f"{qc['filter_rate']:.1f}%",

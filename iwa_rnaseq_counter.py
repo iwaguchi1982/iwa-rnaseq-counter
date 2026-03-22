@@ -188,10 +188,29 @@ def run_app() -> None:
                     t_nr_df = build_transcript_quant_table(success_outputs, value_type="NumReads")
                     g_tpm_df = aggregate_transcript_to_gene(t_tpm_df, tx2gene_df)
                     g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
+                    
+                    input_source = "unknown"
+                    if "input_source" in st.session_state.sample_df.columns and not st.session_state.sample_df.empty:
+                        input_source = str(st.session_state.sample_df["input_source"].iloc[0])
+                        
+                    from src.sample_parser import METADATA_COLUMNS
+                    sample_metadata_columns = [c for c in METADATA_COLUMNS if c in st.session_state.sample_df.columns]
+                    
+                    sample_metadata_columns_nonempty = []
+                    for col in sample_metadata_columns:
+                        if col == "exclude":
+                            if st.session_state.sample_df[col].fillna(False).astype(bool).any():
+                                sample_metadata_columns_nonempty.append(col)
+                        else:
+                            if st.session_state.sample_df[col].fillna("").astype(str).str.strip().replace("nan", "").ne("").any():
+                                sample_metadata_columns_nonempty.append(col)
 
                     run_summary = {
                         "analysis_name": st.session_state.analysis_name,
                         "sample_count": len(st.session_state.sample_df),
+                        "input_source": input_source,
+                        "sample_metadata_columns": sample_metadata_columns,
+                        "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
                         "success_count": len(success_outputs),
                         "failure_count": failure_count,
                         "transcript_rows": len(t_tpm_df),

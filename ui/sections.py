@@ -50,7 +50,18 @@ def render_analysis_section() -> dict[str, Any]:
         with c2:
             st.write("##") # alignment
             load_csv_requested = st.button("LOAD CSV", use_container_width=True)
-        st.caption("CSV形式: `sample_id, r1_path, r2_path, layout, group` (ヘッダー必須)")
+        st.markdown("""
+        **CSV形式の仕様:**
+        - **必須:** `sample_id`, `r1_path`, `layout`
+        - **条件付き必須:** `r2_path` (paired-end の場合)
+        - **任意:** `group`, `condition`, `replicate`, `batch`, `pair_id`, `note`, `display_name`, `color`, `exclude`
+        
+        *※ r1_path, r2_path は入力ディレクトリからの相対パスまたは絶対パス。*
+        
+        *※ `exclude`: 今後の解析対象除外フラグ。現時点では保存のみで、quant 実行制御には未使用。*
+        """)
+        with st.expander("CSV サンプル例を表示"):
+            st.code("sample_id,r1_path,r2_path,layout,group,condition,replicate,batch,pair_id,note,display_name,color,exclude\nSRR518891,runs/SRA518891/SRR518891_1.fastq,runs/SRA518891/SRR518891_2.fastq,paired-end,control,control,1,batch1,,yeast control replicate 1,Control-1,#4C78A8,false\nSRR518892,runs/SRA518892/SRR518892_1.fastq,runs/SRA518892/SRR518892_2.fastq,paired-end,treated,treated,1,batch1,,yeast treated replicate 1,Treated-1,#F58518,false\n", language="csv")
     else:
         scan_requested = st.button("FASTQ をスキャン")
 
@@ -93,7 +104,15 @@ def render_sample_section(sample_df: pd.DataFrame) -> pd.DataFrame:
         sample_df,
         column_config={
             "sample_id": st.column_config.TextColumn("Sample ID", required=True),
-            "group": st.column_config.TextColumn("Group (任意)", help="control, treated など"),
+            "group": st.column_config.TextColumn("Group", help="control, treated 等"),
+            "condition": st.column_config.TextColumn("Condition", help="drugA, wild-type 等"),
+            "replicate": st.column_config.TextColumn("Replicate", help="1, 2, R1 等"),
+            "batch": st.column_config.TextColumn("Batch", help="batch1, plateA 等"),
+            "pair_id": st.column_config.TextColumn("PairID", help="Pair 解析用 ID"),
+            "note": st.column_config.TextColumn("Note", help="備考"),
+            "display_name": st.column_config.TextColumn("Display Name", help="レポート用表示名"),
+            "color": st.column_config.TextColumn("Color", help="プロット用色 (例: #FF0000, red)"),
+            "exclude": st.column_config.CheckboxColumn("Exclude", help="今後の解析対象除外フラグ（現時点では保存のみ）"),
             "layout_final": st.column_config.SelectboxColumn(
                 "Layout",
                 options=["paired-end", "single-end"],
@@ -107,6 +126,7 @@ def render_sample_section(sample_df: pd.DataFrame) -> pd.DataFrame:
             "layout_predicted": None,
             "lane_count": None,
             "file_count": None,
+            "input_source": None,
         },
         hide_index=True,
         use_container_width=True,

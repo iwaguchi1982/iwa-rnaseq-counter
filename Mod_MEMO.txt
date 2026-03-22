@@ -1,0 +1,225 @@
+1. standardize_sample_df_columns() の欠損列補完
+
+ここは少し危ないです。
+
+今のこれです。
+
+df[col] = "" if col not in ("r1_paths", "r2_paths", "all_paths", "exclude") else ([] if "paths" in col else False)
+
+r1_paths / r2_paths / all_paths に [] をそのまま入れると、DataFrame の行数によっては扱いが不安定です。
+ここは 各行ごとの空 list にした方が安全です。
+
+たとえば方針はこうです。
+
+if col in ("r1_paths", "r2_paths", "all_paths"):
+    df[col] = [[] for _ in range(len(df))]
+elif col == "exclude":
+    df[col] = False
+else:
+    df[col] = ""
+
+2. exclude の UI 文言
+
+UI では
+
+解析から除外する場合チェック
+
+になっていますが、現設計では まだ実行除外には使わない 方針でしたよね。
+なので今のままだと、ユーザーに「チェックすると quant 実行されない」と誤解されやすいです。
+
+現段階では文言をこう寄せる方が安全です。
+
+今後の解析対象除外フラグ
+
+現時点では保存のみ
+
+将来の reporter / QC 用
+
+これは見た目修正というより、挙動との整合性 の問題なので先に直す。
+
+3. sample_metadata_columns の抽出
+
+ここは sample_df.columns にあるだけだと、空列も全部入ってしまいます。
+設計上はそれでも間違いではないですが、reporter に渡すなら
+
+schema として存在する列
+
+実際に値が入っている列
+
+を分けられるとより良いです。
+
+今はまず簡単に、
+
+sample_metadata_columns = [col for col in METADATA_COLUMNS if col in sample_df.columns]
+
+で十分ですが、将来的には
+
+sample_metadata_columns_nonempty
+
+もあると便利です。
+
+1. standardize_sample_df_columns() の list 補完修正
+問題
+
+今のように df[col] = [] を列に直接入れると、
+DataFrame の各行で独立した空 list にならず、不安定です。
+
+修正方針
+
+r1_paths
+
+r2_paths
+
+all_paths
+
+は 各行ごとに空 list を入れる。
+
+パッチ案
+def standardize_sample_df_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    sample_df の列を STANDARD_SAMPLE_COLUMNS に揃える。
+    """
+    for col in STANDARD_SAMPLE_COLUMNS:
+        if col not in df.columns:
+            if col in ("r1_paths", "r2_paths", "all_paths"):
+                df[col] = [[] for _ in range(len(df))]
+            elif col == "exclude":
+                df[col] = False
+            else:
+                df[col] = ""
+
+    return df[STANDARD_SAMPLE_COLUMNS].copy()
+追加でやると安全
+
+もし既存列に NaN が入る可能性があるなら、続けてこれも入れておくと良いです。
+
+for col in ("r1_paths", "r2_paths", "all_paths"):
+    df[col] = df[col].apply(lambda x: x if isinstance(x, list) else ([] if pd.isna(x) else [x]))
+
+ただし、今は最小修正なら最初のパッチだけでも十分です。
+
+2. exclude の UI 文言修正
+問題
+
+今の文言だと、
+チェックすると quant 実行から除外される ように見えます。
+
+でも v0.1.6 ではまだ
+保存のみで、counter 実行制御には使わない 方針でした。
+
+修正方針
+
+UI 上で「将来用」「保存のみ」と明記する。
+
+パッチ案
+
+CSV 説明やサンプル例の補足を、こう変更します。
+
+変更前イメージ
+st.caption("exclude: 解析から除外する場合チェック")
+変更後
+st.caption("exclude: 今後の解析対象除外フラグ。現時点では保存のみで、quant 実行制御には未使用。")
+もし表ヘッダ説明もあるなら
+st.markdown("""
+- `exclude`: 今後の reporter / QC 用の除外フラグ候補  
+  （v0.1.6 では保存のみ。counter 実行からは除外しません）
+""")
+3. sample_metadata_columns 抽出整理
+問題
+
+今の実装だと、存在するだけで metadata 列に入るので、
+全部空の列も sample_metadata_columns に入る 可能性があります。
+
+これは間違いではないですが、reporter 側では少しノイズです。
+
+修正方針
+
+ひとまず 2 種類に分けると良いです。
+
+sample_metadata_columns: schema として存在する列
+
+sample_metadata_columns_nonempty: 実際に値が入っている列
+
+パッチ案
+
+iwa_rnaseq_counter.py の run_summary 組み立て部分でこうします。
+
+sample_metadata_columns = [
+    col for col in METADATA_COLUMNS
+    if col in sample_df.columns
+]
+
+sample_metadata_columns_nonempty = [
+    col for col in sample_metadata_columns
+    if sample_df[col].astype(str).str.strip().replace("nan", "").ne("").any()
+]
+exclude だけは bool なので別扱いしたい場合
+
+より安全にやるならこうです。
+
+sample_metadata_columns = [
+    col for col in METADATA_COLUMNS
+    if col in sample_df.columns
+]
+
+sample_metadata_columns_nonempty = []
+for col in sample_metadata_columns:
+    if col == "exclude":
+        if sample_df[col].fillna(False).astype(bool).any():
+            sample_metadata_columns_nonempty.append(col)
+    else:
+        if sample_df[col].fillna("").astype(str).str.strip().ne("").any():
+            sample_metadata_columns_nonempty.append(col)
+run_summary にはこう入れる
+run_summary["sample_metadata_columns"] = sample_metadata_columns
+run_summary["sample_metadata_columns_nonempty"] = sample_metadata_columns_nonempty
+4. まとめて当てるなら
+src/sample_parser.py
+
+standardize_sample_df_columns() の空 list 補完を修正
+
+ui/sections.py
+
+exclude の説明を「保存のみ」に修正
+
+iwa_rnaseq_counter.py
+
+sample_metadata_columns_nonempty を追加
+
+run_summary に両方入れる
+
+5. 最小修正の優先順位
+
+この順で当てれば十分です。
+
+standardize_sample_df_columns()
+
+exclude 文言
+
+sample_metadata_columns_nonempty 追加
+
+6. そのまま使える短い差分イメージ
+# sample_parser.py
+if col in ("r1_paths", "r2_paths", "all_paths"):
+    df[col] = [[] for _ in range(len(df))]
+elif col == "exclude":
+    df[col] = False
+else:
+    df[col] = ""
+# ui/sections.py
+st.caption("exclude: 今後の解析対象除外フラグ。現時点では保存のみで、quant 実行制御には未使用。")
+# iwa_rnaseq_counter.py
+sample_metadata_columns = [col for col in METADATA_COLUMNS if col in sample_df.columns]
+
+sample_metadata_columns_nonempty = []
+for col in sample_metadata_columns:
+    if col == "exclude":
+        if sample_df[col].fillna(False).astype(bool).any():
+            sample_metadata_columns_nonempty.append(col)
+    else:
+        if sample_df[col].fillna("").astype(str).str.strip().ne("").any():
+            sample_metadata_columns_nonempty.append(col)
+
+run_summary["sample_metadata_columns"] = sample_metadata_columns
+run_summary["sample_metadata_columns_nonempty"] = sample_metadata_columns_nonempty
+

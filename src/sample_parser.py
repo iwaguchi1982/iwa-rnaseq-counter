@@ -40,6 +40,101 @@ def detect_lane_groups(sample_groups: dict) -> dict:
     return lane_map
 
 
+METADATA_COLUMNS = [
+    "group",
+    "condition",
+    "replicate",
+    "batch",
+    "pair_id",
+    "note",
+    "display_name",
+    "color",
+    "exclude"
+]
+
+STANDARD_SAMPLE_COLUMNS = [
+    "sample_id",
+    "group",
+    "condition",
+    "replicate",
+    "batch",
+    "pair_id",
+    "note",
+    "display_name",
+    "color",
+    "exclude",
+    "layout_predicted",
+    "layout_final",
+    "lane_count",
+    "file_count",
+    "status",
+    "notes",
+    "input_source",
+    "r1_paths",
+    "r2_paths",
+    "all_paths",
+]
+
+
+def normalize_sample_sheet_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """列名を標準名に寄せる。"""
+    df = df.copy()
+    df.columns = [str(c).lower().strip() for c in df.columns]
+    return df
+
+
+def add_missing_metadata_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """任意 metadata 列が無ければ空列で補完する。"""
+    df = df.copy()
+    for col in set(METADATA_COLUMNS) - set(df.columns):
+        df[col] = ""
+    return df
+
+
+def normalize_layout_value(layout: str) -> str:
+    """layout を single-end / paired-end に正規化する。"""
+    l = str(layout).strip().lower()
+    if l in ("pe", "paired"): return "paired-end"
+    if l in ("se", "single"): return "single-end"
+    return l
+
+
+def normalize_exclude_value(value) -> bool:
+    """exclude を bool に正規化する。"""
+    val = str(value).strip().lower()
+    return val == "true" if val not in ("", "none", "nan") else False
+
+
+def resolve_sample_sheet_path(path_value: str, input_dir: str | None = None) -> str | None:
+    """相対 / 絶対 path を解決する。"""
+    pv = str(path_value).strip()
+    if not pv or pv == "nan" or pv == "None":
+        return None
+    pth = Path(pv)
+    if not pth.is_absolute() and input_dir:
+        pth = Path(input_dir) / pth
+    return str(pth)
+
+
+def standardize_sample_df_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    sample_df の列を STANDARD_SAMPLE_COLUMNS に揃える。
+    """
+    # 欠落している標準列があれば空で埋める
+    for col in STANDARD_SAMPLE_COLUMNS:
+        if col not in df.columns:
+            if col in ("r1_paths", "r2_paths", "all_paths"):
+                df[col] = [[] for _ in range(len(df))]
+            elif col == "exclude":
+                df[col] = False
+            else:
+                df[col] = ""
+            
+    # 存在する列を STANDARD_SAMPLE_COLUMNS の順序で抽出
+    final_cols = [c for c in STANDARD_SAMPLE_COLUMNS if c in df.columns]
+    return df[final_cols]
+
+
 def build_sample_table(sample_groups: dict, layout_map: dict, lane_map: dict) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for sample_id, info in sample_groups.items():
@@ -59,62 +154,60 @@ def build_sample_table(sample_groups: dict, layout_map: dict, lane_map: dict) ->
             lanes_str = ", ".join(lane_info["lanes"])
             notes_list.append(f"{lane_info['lane_count']} lanes merged ({lanes_str})")
             
-        rows.append(
-            {
-                "sample_id": sample_id,
-                "group": "",
-                "layout_predicted": layout,
-                "layout_final": layout,
-                "lane_count": lane_info["lane_count"],
-                "file_count": len(files),
-                "status": status,
-                "r1_paths": r1_paths,
-                "r2_paths": r2_paths,
-                "all_paths": files,
-                "notes": "; ".join(notes_list),
-            }
-        )
-    return pd.DataFrame(rows)
+        row = {
+            "sample_id": sample_id,
+            "layout_predicted": layout,
+            "layout_final": layout,
+            "lane_count": lane_info["lane_count"],
+            "file_count": len(files),
+            "status": status,
+            "r1_paths": r1_paths,
+            "r2_paths": r2_paths,
+            "all_paths": files,
+            "notes": "; ".join(notes_list),
+            "input_source": "auto_detect",
+        }
+        for col in METADATA_COLUMNS:
+            row[col] = ""
+            
+        rows.append(row)
+    
+    df = pd.DataFrame(rows)
+    return standardize_sample_df_columns(df)
 
 
-def parse_sample_sheet(csv_path: str, input_dir: str) -> pd.DataFrame:
+def parse_sample_sheet(csv_path: str, input_dir: str | None = None) -> pd.DataFrame:
     """
     CSV からサンプル表を作成する。
-    仕様: sample_id, r1_path, r2_path, layout, group
-    r1_path, r2_path は input_dir からの相対パス、または絶対パス。
+    仕様: sample_id, r1_path, r2_path, layout, group, condition, replicate, batch, pair_id, note
     """
     df_csv = pd.read_csv(csv_path)
-    # 必要列の正規化
-    col_map = {c.lower(): c for c in df_csv.columns}
+    df_csv = normalize_sample_sheet_columns(df_csv)
+    df_csv = add_missing_metadata_columns(df_csv)
     
     rows = []
     for _, row in df_csv.iterrows():
-        sid = str(row.get(col_map.get("sample_id"), "")).strip()
-        r1 = str(row.get(col_map.get("r1_path"), "")).strip()
-        r2 = str(row.get(col_map.get("r2_path"), "")).strip()
-        layout = str(row.get(col_map.get("layout"), "paired-end")).strip().lower()
-        group = str(row.get(col_map.get("group"), "")).strip()
+        sid = str(row.get("sample_id", "")).strip()
+        layout = normalize_layout_value(row.get("layout", "paired-end"))
         
-        # パス解決
-        def resolve(p):
-            if not p or p == "nan": return None
-            pth = Path(p)
-            if not pth.is_absolute():
-                pth = Path(input_dir) / pth
-            return str(pth)
-
-        r1_resolved = resolve(r1)
-        r2_resolved = resolve(r2)
+        # フォールバック処理
+        cond = str(row.get("condition", "")).strip()
+        grp = str(row.get("group", "")).strip()
+        if not cond or cond == "nan" or cond == "None":
+            cond = grp
+            
+        dname = str(row.get("display_name", "")).strip()
+        if not dname or dname == "nan" or dname == "None":
+            dname = sid
+            
+        exclude = normalize_exclude_value(row.get("exclude", ""))
         
-        all_p = [p for p in [r1_resolved, r2_resolved] if p]
+        r1_resolved = resolve_sample_sheet_path(row.get("r1_path", ""), input_dir)
+        r2_resolved = resolve_sample_sheet_path(row.get("r2_path", ""), input_dir)
+        all_p = [p for p in [r1_resolved, r2_resolved] if p is not None]
         
-        # layout 文字列の統一
-        if layout in ("pe", "paired"): layout = "paired-end"
-        if layout in ("se", "single"): layout = "single-end"
-        
-        rows.append({
+        row_data = {
             "sample_id": sid,
-            "group": group,
             "layout_predicted": layout,
             "layout_final": layout,
             "lane_count": 1,
@@ -124,13 +217,24 @@ def parse_sample_sheet(csv_path: str, input_dir: str) -> pd.DataFrame:
             "r2_paths": [r2_resolved] if r2_resolved else [],
             "all_paths": all_p,
             "notes": "Loaded from CSV",
-        })
+            "input_source": "sample_sheet",
+            "condition": cond,
+            "display_name": dname,
+            "exclude": exclude,
+        }
+        
+        # その他のメタデータを取得
+        for col in METADATA_COLUMNS:
+            if col not in ("condition", "display_name", "exclude"):
+                val = row.get(col, "")
+                row_data[col] = str(val).strip() if pd.notna(val) else ""
+            
+        rows.append(row_data)
     
     df = pd.DataFrame(rows)
-    # apply_sample_table_edits と同様のバリデーションを適用
     df = df.apply(_recalculate_sample_row_status, axis=1)
     df = _mark_duplicate_sample_ids(df)
-    return df
+    return standardize_sample_df_columns(df)
 
 
 def apply_sample_table_edits(sample_df: pd.DataFrame, edited_sample_df: pd.DataFrame | None) -> pd.DataFrame:
@@ -141,9 +245,28 @@ def apply_sample_table_edits(sample_df: pd.DataFrame, edited_sample_df: pd.DataF
     
     # 1. 基礎的なクリーンアップ
     df["sample_id"] = df["sample_id"].astype(str).str.strip()
-    if "group" in df.columns:
-        df["group"] = df["group"].astype(str).str.strip()
     df["layout_final"] = df["layout_final"].astype(str).str.strip().str.lower()
+    
+    # メタデータ列のクリーンアップ
+    for col in METADATA_COLUMNS:
+        if col in df.columns and col != "exclude":
+            df[col] = df[col].astype(str).str.strip()
+            
+    # 値の正規化・フォールバック
+    if "exclude" in df.columns:
+        df["exclude"] = df["exclude"].apply(normalize_exclude_value)
+        
+    if "condition" in df.columns and "group" in df.columns:
+        df["condition"] = df.apply(
+            lambda r: r["group"] if not str(r["condition"]).strip() or str(r["condition"]).strip() == "nan" else str(r["condition"]).strip(), 
+            axis=1
+        )
+        
+    if "display_name" in df.columns and "sample_id" in df.columns:
+        df["display_name"] = df.apply(
+            lambda r: r["sample_id"] if not str(r["display_name"]).strip() or str(r["display_name"]).strip() == "nan" else str(r["display_name"]).strip(), 
+            axis=1
+        )
     
     # 2. 状態の再計算
     df = df.apply(_recalculate_sample_row_status, axis=1)
@@ -151,7 +274,7 @@ def apply_sample_table_edits(sample_df: pd.DataFrame, edited_sample_df: pd.DataF
     # 3. 重複チェック
     df = _mark_duplicate_sample_ids(df)
     
-    return df
+    return standardize_sample_df_columns(df)
 
 
 def _recalculate_sample_row_status(row: pd.Series) -> pd.Series:

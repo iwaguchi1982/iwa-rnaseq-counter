@@ -121,6 +121,89 @@ def validate_sample_structure(sample_df: pd.DataFrame | None) -> dict:
     return _valid()
 
 
+def validate_sample_sheet_schema(sample_df: pd.DataFrame) -> dict:
+    if sample_df is None or sample_df.empty:
+        return _invalid("サンプルシートが空です。")
+    
+    errors = []
+    # sample_id 欠損
+    if (sample_df["sample_id"].str.strip() == "").any() or sample_df["sample_id"].isna().any():
+        errors.append("sample_id が欠損している行があります。")
+        
+    # sample_id 重複
+    ids = sample_df["sample_id"].astype(str).str.strip()
+    valid_ids = ids[(ids != "") & (ids != "nan")]
+    if valid_ids.duplicated().any():
+        dups = valid_ids[valid_ids.duplicated()].unique()
+        errors.append(f"sample_id が重複しています: {', '.join(dups)}")
+        
+    # layout_final が single-end / paired-end 以外
+    if "layout_final" in sample_df.columns:
+        invalid_layout = sample_df[~sample_df["layout_final"].isin(["paired-end", "single-end"])]
+        if not invalid_layout.empty:
+            samples = invalid_layout['sample_id'].tolist()
+            errors.append(f"無効な layout が指定されています ({', '.join(samples)})")
+            
+    # paired-end で r1_paths / r2_paths 空
+    if "layout_final" in sample_df.columns and "r1_paths" in sample_df.columns and "r2_paths" in sample_df.columns:
+        pe_df = sample_df[sample_df["layout_final"] == "paired-end"]
+        if not pe_df.empty:
+            if pe_df["r1_paths"].apply(lambda x: isinstance(x, list) and len(x) == 0).any():
+                errors.append("paired-end サンプルに r1_path が欠損しています。")
+            if pe_df["r2_paths"].apply(lambda x: isinstance(x, list) and len(x) == 0).any():
+                errors.append("paired-end サンプルに r2_path が欠損しています。")
+                
+    # single-end で r1_paths 空
+    if "layout_final" in sample_df.columns and "r1_paths" in sample_df.columns:
+        se_df = sample_df[sample_df["layout_final"] == "single-end"]
+        if not se_df.empty:
+            if se_df["r1_paths"].apply(lambda x: isinstance(x, list) and len(x) == 0).any():
+                errors.append("single-end サンプルに r1_path が欠損しています。")
+
+    if errors:
+        return {"is_valid": False, "errors": errors, "warnings": []}
+    return _valid()
+
+
+def validate_sample_paths_from_sheet(sample_df: pd.DataFrame) -> dict:
+    if sample_df is None or sample_df.empty:
+        return _valid()
+        
+    errors = []
+    for _, row in sample_df.iterrows():
+        sid = row.get("sample_id", "Unknown")
+        all_p = row.get("all_paths", [])
+        if not isinstance(all_p, list):
+            continue
+        missing = [p for p in all_p if not p or not Path(p).exists()]
+        if missing:
+            errors.append(f"[{sid}] FASTQファイルが見つかりません: {', '.join([Path(p).name if p else 'None' for p in missing])}")
+            
+    if errors:
+        return {"is_valid": False, "errors": errors, "warnings": []}
+    return _valid()
+
+
+def validate_sample_metadata_completeness(sample_df: pd.DataFrame) -> dict:
+    if sample_df is None or sample_df.empty:
+        return _valid()
+        
+    warnings = []
+    check_cols = ["group", "condition", "replicate", "batch", "pair_id", "display_name"]
+    
+    for col in check_cols:
+        if col in sample_df.columns:
+            empty_mask = (sample_df[col].astype(str).str.strip() == "") | (sample_df[col].astype(str).str.strip() == "nan") | sample_df[col].isna()
+            if empty_mask.any():
+                samples = sample_df[empty_mask]["sample_id"].tolist()
+                sample_str = ", ".join(samples[:3]) + ("..." if len(samples) > 3 else "")
+                warnings.append(f"メタデータ '{col}' が空のサンプルがあります ({sample_str})。将来の連携時に警告される可能性があります。")
+                
+    if warnings:
+        return {"is_valid": True, "errors": [], "warnings": warnings}
+    return _valid()
+
+
 def validate_fastq_detected(sample_df: pd.DataFrame | None) -> dict:
     if sample_df is None or sample_df.empty:
         return _invalid("FASTQ ファイルが検出されていません。")
@@ -136,7 +219,6 @@ def validate_run_conditions(
     strandedness_mode: str,
     strandedness_result: dict | None,
 ) -> dict:
-    # 設計書 (11.1, 11.2) に基づくチェック項目
     checks = {
         "fastq_detected": validate_fastq_detected(sample_df),
         "sample_structure": validate_sample_structure(sample_df),
@@ -146,6 +228,12 @@ def validate_run_conditions(
         "output_dir": validate_output_directory(output_dir),
         "salmon_binary": validate_salmon_binary(),
     }
+    
+    if sample_df is not None and not sample_df.empty and "input_source" in sample_df.columns:
+        if (sample_df["input_source"] == "sample_sheet").any():
+            checks["schema"] = validate_sample_sheet_schema(sample_df)
+            checks["paths"] = validate_sample_paths_from_sheet(sample_df)
+            checks["metadata_warnings"] = validate_sample_metadata_completeness(sample_df)
 
     errors = []
     warnings = []
