@@ -11,6 +11,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+
 runs/
+refs/
+results/
 logs/
+sample_sheet/
 *.log
+
+MEMO.txt
+*.fastq
+*.fastq.gz
+*.swp
