@@ -204,38 +204,102 @@ def run_app() -> None:
                         else:
                             if st.session_state.sample_df[col].fillna("").astype(str).str.strip().replace("nan", "").ne("").any():
                                 sample_metadata_columns_nonempty.append(col)
+                    
+                    sample_ids_all = st.session_state.sample_df["sample_id"].tolist()
+                    sample_ids_success = [o["sample_id"] for o in success_outputs]
+                    sample_ids_failed = [o["sample_id"] for o in outputs if not o.get("is_success")]
+                    sample_ids_aggregated = sample_ids_success # v0.1.7: aggregation uses success samples
+
+                    # Normalize output paths to be relative to run_dir
+                    rel_outputs = []
+                    for o in outputs:
+                        rel_o = o.copy()
+                        for key in ["quant_path", "aux_info_dir", "log_path"]:
+                            if rel_o.get(key):
+                                try:
+                                    rel_o[key] = str(Path(rel_o[key]).relative_to(run_dir))
+                                except ValueError:
+                                    pass
+                        rel_outputs.append(rel_o)
 
                     run_summary = {
                         "analysis_name": st.session_state.analysis_name,
+                        "run_name": st.session_state.analysis_name,
                         "sample_count": len(st.session_state.sample_df),
+                        "success_count": len(success_outputs),
+                        "failure_count": failure_count,
+                        "sample_ids_all": sample_ids_all,
+                        "sample_ids_success": sample_ids_success,
+                        "sample_ids_failed": sample_ids_failed,
+                        "sample_ids_aggregated": sample_ids_aggregated,
                         "input_source": input_source,
                         "sample_metadata_columns": sample_metadata_columns,
                         "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
-                        "success_count": len(success_outputs),
-                        "failure_count": failure_count,
                         "transcript_rows": len(t_tpm_df),
                         "gene_rows": len(g_tpm_df),
                         "elapsed_seconds": time.time() - start_time,
                         "outputs": outputs,
                         "save_path": str(run_dir),
-                        "salmon_version": "1.10.1",
+                        "quantifier": "salmon",
+                        "quantifier_version": "1.10.1",
                         "salmon_index_path": st.session_state.salmon_index_path,
                         "tx2gene_path": st.session_state.tx2gene_path,
                         "strandedness": st.session_state.strandedness_prediction,
                         "threads": st.session_state.threads,
                     }
                     
+                    # Create a version for disk with relative paths
+                    disk_summary = run_summary.copy()
+                    disk_summary["save_path"] = run_dir.name
+                    disk_summary["outputs"] = rel_outputs
+
                     matrices = {
                         "transcript_tpm": t_tpm_df, "transcript_numreads": t_nr_df,
                         "gene_tpm": g_tpm_df, "gene_numreads": g_nr_df
                     }
                     
+                    from src.gene_aggregator import save_quant_tables
                     output_paths = save_quant_tables(
                         matrices=matrices,
                         sample_df=st.session_state.sample_df,
-                        run_summary=run_summary,
-                        run_output_dir=str(run_dir)
+                        run_summary=disk_summary, # Save the relative version
+                        run_output_dir=run_dir
                     )
+
+                    # Generate dataset_manifest.json
+                    manifest_data = {
+                        "manifest_version": "1.0",
+                        "generated_at": datetime.now().astimezone().isoformat(),
+                        "app_name": "iwa-rnaseq-counter",
+                        "app_version": "v0.1.7",
+                        "run_name": st.session_state.analysis_name,
+                        "analysis_name": st.session_state.analysis_name,
+                        "input_source": input_source,
+                        "quantifier": "salmon",
+                        "quantifier_version": "1.10.1",
+                        "sample_count_total": len(sample_ids_all),
+                        "sample_count_success": len(sample_ids_success),
+                        "sample_count_failed": len(sample_ids_failed),
+                        "sample_ids_all": sample_ids_all,
+                        "sample_ids_success": sample_ids_success,
+                        "sample_ids_failed": sample_ids_failed,
+                        "sample_ids_aggregated": sample_ids_aggregated,
+                        "results_dir": "results",
+                        "files": {
+                            "sample_metadata": "results/sample_metadata.csv",
+                            "sample_qc_summary": "results/sample_qc_summary.csv",
+                            "transcript_tpm": "results/transcript_tpm.csv",
+                            "transcript_numreads": "results/transcript_numreads.csv",
+                            "gene_tpm": "results/gene_tpm.csv",
+                            "gene_numreads": "results/gene_numreads.csv",
+                            "run_summary": "results/run_summary.json",
+                            "sample_sheet": "sample_sheet.csv",
+                            "run_config": "run_config.json",
+                            "run_log": "logs/run.log"
+                        }
+                    }
+                    from src.run_artifacts import save_dataset_manifest
+                    save_dataset_manifest(run_dir, manifest_data)
                     
                     st.session_state.run_summary = run_summary
                     st.session_state.output_files = build_output_manifest(

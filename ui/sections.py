@@ -216,7 +216,7 @@ def render_result_section(
     run_summary: dict[str, Any] | None = None,
 ) -> None:
     st.subheader("6. 実行・結果")
-    st.caption("v0.5.0: サンプルシート対応・群情報 (Group) の保持・部分成功サポート。")
+    st.caption("v0.1.7: Reporter 連携用出力標準化（manifest 生成）対応。")
 
     if run_status == "idle":
         st.info("RUN ボタンを押すと解析が開始されます。")
@@ -247,7 +247,8 @@ def render_result_section(
         with c_ref:
             with st.container(border=True):
                 st.markdown("#### 参照設定・環境")
-                st.write(f"**Salmon Version:** `{run_summary.get('salmon_version', '1.10.1')}`")
+                st.write(f"**Quantifier:** `{run_summary.get('quantifier', 'salmon')}`")
+                st.write(f"**Quantifier Version:** `{run_summary.get('quantifier_version', 'N/A')}`")
                 st.write(f"**Inferred Lib Type:** `{run_summary.get('strandedness', {}).get('mode', 'N/A')}`")
                 st.write(f"**Index:** `{Path(run_summary.get('salmon_index_path', '')).name}`")
                 st.write(f"**tx2gene:** `{Path(run_summary.get('tx2gene_path', '')).name}`")

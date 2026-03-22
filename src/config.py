@@ -64,10 +64,10 @@ def get_strandedness_options() -> list[str]:
 
 def get_default_output_filenames() -> dict[str, str]:
     return {
-        "transcript_tpm": "transcript_TPM.csv",
-        "transcript_numreads": "transcript_NumReads.csv",
-        "gene_tpm": "gene_TPM.csv",
-        "gene_numreads": "gene_NumReads.csv",
+        "transcript_tpm": "transcript_tpm.csv",
+        "transcript_numreads": "transcript_numreads.csv",
+        "gene_tpm": "gene_tpm.csv",
+        "gene_numreads": "gene_numreads.csv",
         "run_log": "run.log",
         "run_config": "run_config.json",
         "run_summary": "run_summary.json",

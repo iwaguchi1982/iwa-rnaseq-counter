@@ -85,28 +85,35 @@ def save_quant_tables(
     """
     matrices: {"transcript_tpm": df, "transcript_numreads": df, "gene_tpm": df, "gene_numreads": df}
     """
-    names = get_default_output_filenames()
     result_dir = Path(run_output_dir) / "results"
     result_dir.mkdir(parents=True, exist_ok=True)
 
     output_paths = {}
     
-    # Save Matrices
-    for key, df in matrices.items():
-        if key in names:
-            path = result_dir / names[key]
-            df.to_csv(path)
-            output_paths[f"{key}_csv"] = str(path)
+    # Standardized Matrix Filenames mapping
+    matrix_mapping = {
+        "transcript_tpm": "transcript_tpm.csv",
+        "transcript_numreads": "transcript_numreads.csv",
+        "gene_tpm": "gene_tpm.csv",
+        "gene_numreads": "gene_numreads.csv"
+    }
 
-    # 4. Save sample sheet and metadata
+    # Save Matrices
+    for key, filename in matrix_mapping.items():
+        if key in matrices:
+            path = result_dir / filename
+            matrices[key].to_csv(path)
+            output_paths[key] = str(path)
+
+    # Save sample sheet and metadata
     sample_sheet_path = result_dir / "sample_sheet.csv"
     sample_df.to_csv(sample_sheet_path, index=False)
-    output_paths["sample_sheet_csv"] = str(sample_sheet_path)
+    output_paths["sample_sheet"] = str(sample_sheet_path)
 
     metadata_path = save_sample_metadata_csv(result_dir, sample_df)
-    output_paths["sample_metadata_csv"] = str(metadata_path)
+    output_paths["sample_metadata"] = str(metadata_path)
 
-    # QC Summary
+    # Standardized QC Summary
     qc_data = []
     for o in run_summary.get("outputs", []):
         if not o.get("is_success"): continue
@@ -117,27 +124,28 @@ def save_quant_tables(
             num_decoy=o.get("num_decoy", 0),
             num_filter=o.get("num_filter", 0)
         )
+        # MEMO.txt spec: sample_id, qc_status, mapped_fragments, mapping_rate, decoy_fragments, decoy_rate, low_score_fragments, low_score_rate, alerts
         qc_data.append({
-            "QC": qc["icon"],
-            "Sample": o["sample_id"],
-            "Group": sample_df[sample_df["sample_id"] == o["sample_id"]]["group"].values[0] if "group" in sample_df.columns else "",
-            "Condition": sample_df[sample_df["sample_id"] == o["sample_id"]]["condition"].values[0] if "condition" in sample_df.columns else "",
-            "Mapped%": f"{qc['mapping_rate']:.2f}%",
-            "Decoy%": f"{qc['decoy_rate']:.1f}%",
-            "Filt%": f"{qc['filter_rate']:.1f}%",
-            "Mapped Reads": o.get("num_mapped", 0),
-            "Alerts": "; ".join(qc["alerts"]) if qc["alerts"] else "OK"
+            "sample_id": o["sample_id"],
+            "qc_status": qc["status"],
+            "mapped_fragments": o.get("num_mapped", 0),
+            "mapping_rate": qc["mapping_rate"],
+            "decoy_fragments": o.get("num_decoy", 0),
+            "decoy_rate": qc["decoy_rate"],
+            "low_score_fragments": o.get("num_filter", 0),
+            "low_score_rate": qc["filter_rate"],
+            "alerts": "; ".join(qc["alerts"]) if qc["alerts"] else "OK"
         })
     
     if qc_data:
         qc_summary_path = result_dir / "sample_qc_summary.csv"
         pd.DataFrame(qc_data).to_csv(qc_summary_path, index=False)
-        output_paths["qc_summary_csv"] = str(qc_summary_path)
+        output_paths["sample_qc_summary"] = str(qc_summary_path)
 
-    # Save Run Summary JSON
-    summary_path = result_dir / names["run_summary"]
+    # Save Run Summary JSON (naming fixed to run_summary.json)
+    summary_path = result_dir / "run_summary.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(run_summary, f, indent=2, ensure_ascii=False)
-    output_paths["run_summary_json"] = str(summary_path)
+    output_paths["run_summary"] = str(summary_path)
 
     return output_paths

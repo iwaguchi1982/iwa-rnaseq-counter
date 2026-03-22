@@ -29,10 +29,21 @@ def save_run_config(run_output_dir: Path, config_data: dict) -> Path:
     
     # タイムスタンプを追加
     config_data["timestamp"] = datetime.now().isoformat()
-    config_data["app_version"] = "v0.1.6"
+    config_data["app_version"] = "v0.1.7"
     
     with open(path, "w", encoding="utf-8") as f:
         json.dump(config_data, f, indent=4, ensure_ascii=False)
+    return path
+
+
+def save_dataset_manifest(run_output_dir: Path, manifest_data: dict) -> Path:
+    """
+    Reporter 向けの入口 manifest を保存する。
+    """
+    path = run_output_dir / "results" / "dataset_manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(manifest_data, f, indent=4, ensure_ascii=False)
     return path
 
 
@@ -70,16 +81,19 @@ def build_output_manifest(
     UI での表示や一括DL用の成果物一覧 (Manifest) を作成する。
     設計書に基づき {label, path} 構造とする。
     """
+    # quant_results のキーを src/gene_aggregator.py:save_quant_tables の戻り値に合わせる
     manifest = [
-        {"label": "Transcript TPM", "path": quant_results.get("transcript_tpm_csv")},
-        {"label": "Transcript NumReads", "path": quant_results.get("transcript_numreads_csv")},
-        {"label": "Gene TPM", "path": quant_results.get("gene_tpm_csv")},
-        {"label": "Gene NumReads", "path": quant_results.get("gene_numreads_csv")},
-        {"label": "Run Summary (JSON)", "path": quant_results.get("run_summary_json")},
+        {"label": "Gene TPM Matrix", "path": quant_results.get("gene_tpm")},
+        {"label": "Gene NumReads Matrix", "path": quant_results.get("gene_numreads")},
+        {"label": "Transcript TPM Matrix", "path": quant_results.get("transcript_tpm")},
+        {"label": "Transcript NumReads Matrix", "path": quant_results.get("transcript_numreads")},
+        {"label": "Sample Metadata (CSV)", "path": quant_results.get("sample_metadata")},
+        {"label": "Sample QC Summary (CSV)", "path": quant_results.get("sample_qc_summary")},
+        {"label": "Dataset Manifest (JSON)", "path": str(run_output_dir / "results" / "dataset_manifest.json")},
+        {"label": "Run Summary (JSON)", "path": quant_results.get("run_summary")},
         {"label": "Run Config (JSON)", "path": str(config_path)},
         {"label": "Sample Sheet (CSV)", "path": str(sample_sheet_path)},
-        {"label": "Sample Metadata (CSV)", "path": quant_results.get("sample_metadata_csv")},
-        {"label": "Sample QC Summary (CSV)", "path": quant_results.get("qc_summary_csv")},
         {"label": "Execution Log (Log)", "path": str(master_log_path)},
     ]
-    return [m for m in manifest if m["path"]]
+    # 実在するパスのみを返す
+    return [m for m in manifest if m["path"] and Path(m["path"]).exists()]
