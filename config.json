@@ -3,9 +3,9 @@
     "threads": 4,
     "species_defaults": {
         "yeast": {
-            "input_dir": "runs/SRA518891",
+            "input_dir": "runs",
             "salmon_index_path": "refs/yeast_r64_1_1/index/salmon_gentrome_k31",
-            "tx2gene_path": "refs/yeast_r64_1_1/tx2gene.csv"
+            "tx2gene_path": "refs/yeast_r64_1_1/tx2gene.tsv"
         },
         "human": {
             "input_dir": "",

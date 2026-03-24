@@ -1,4 +1,4 @@
-[project]
+[workspace]
 name = "iwa-rnaseq-counter"
 version = "0.1.0"
 description = "Wet-first RNA-Seq entry app for Salmon-based transcript/gene quant"
@@ -18,4 +18,4 @@ gffread = ">=0.12.7,<0.13"
 seqkit = ">=2.13.0,<3"
 
 [tasks]
-app = "streamlit run iwa_rnaseq_counter.py"
+app = "python -m streamlit run iwa_rnaseq_counter.py"

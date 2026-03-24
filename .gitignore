@@ -19,7 +19,8 @@ logs/
 sample_sheet/
 *.log
 
+Mod_MEMO.txt
 MEMO.txt
 *.fastq
 *.fastq.gz
-*.swpMod_MEMO.txt
+*.swp
