@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 
-from src.config import get_default_output_filenames
+from .config import get_default_output_filenames
 
 
 def setup_run_directory(output_dir: str, analysis_name: str) -> Path:
@@ -62,7 +62,7 @@ def save_sample_metadata_csv(run_output_dir: Path, sample_df: pd.DataFrame) -> P
     Reporter 向けの軽量なメタデータ表を保存する。
     FASTQ パス等を除き、生物学的な条件設定のみを抽出する。
     """
-    from src.sample_parser import METADATA_COLUMNS
+    from .sample_parser import METADATA_COLUMNS
     cols = ["sample_id"] + [c for c in METADATA_COLUMNS if c in sample_df.columns]
     
     path = run_output_dir / "sample_metadata.csv"

@@ -3,12 +3,17 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 import json
+import sys
 from pathlib import Path
 
-from src.config import get_default_session_state
+# Add src to sys.path to allow importing from iwa_rnaseq_counter package
+sys.path.append(str(Path(__file__).parent / "src"))
+
+from iwa_rnaseq_counter.legacy.config import get_default_session_state
 import time
-from src.fastq_discovery import collect_fastq_metadata, discover_fastq_files
-from src.sample_parser import (
+from datetime import datetime
+from iwa_rnaseq_counter.legacy.fastq_discovery import collect_fastq_metadata, discover_fastq_files
+from iwa_rnaseq_counter.legacy.sample_parser import (
     apply_sample_table_edits,
     build_sample_table,
     detect_lane_groups,
@@ -16,8 +21,8 @@ from src.sample_parser import (
     infer_sample_layout,
     parse_sample_sheet,
 )
-from src.strandedness import infer_strandedness
-from src.validators import (
+from iwa_rnaseq_counter.legacy.strandedness import infer_strandedness
+from iwa_rnaseq_counter.legacy.validators import (
     validate_analysis_name,
     validate_input_directory,
     validate_output_directory,
@@ -25,8 +30,8 @@ from src.validators import (
     validate_salmon_index,
     validate_tx2gene_file,
 )
-from src.salmon_runner import run_salmon_quant
-from src.gene_aggregator import (
+from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
+from iwa_rnaseq_counter.legacy.gene_aggregator import (
     load_tx2gene_map,
     aggregate_transcript_to_gene,
     build_transcript_quant_table,
@@ -136,7 +141,7 @@ def run_app() -> None:
     st.session_state.threads = run_values["threads"]
 
     if run_values["run_requested"]:
-        from src.run_artifacts import setup_run_directory, save_run_config, save_sample_sheet, build_output_manifest
+        from iwa_rnaseq_counter.legacy.run_artifacts import setup_run_directory, save_run_config, save_sample_sheet, build_output_manifest
         
         st.session_state.run_status = "running"
         start_time = time.time()
@@ -193,7 +198,7 @@ def run_app() -> None:
                     if "input_source" in st.session_state.sample_df.columns and not st.session_state.sample_df.empty:
                         input_source = str(st.session_state.sample_df["input_source"].iloc[0])
                         
-                    from src.sample_parser import METADATA_COLUMNS
+                    from iwa_rnaseq_counter.legacy.sample_parser import METADATA_COLUMNS
                     sample_metadata_columns = [c for c in METADATA_COLUMNS if c in st.session_state.sample_df.columns]
                     
                     sample_metadata_columns_nonempty = []
@@ -258,7 +263,7 @@ def run_app() -> None:
                         "gene_tpm": g_tpm_df, "gene_numreads": g_nr_df
                     }
                     
-                    from src.gene_aggregator import save_quant_tables
+                    from iwa_rnaseq_counter.legacy.gene_aggregator import save_quant_tables
                     output_paths = save_quant_tables(
                         matrices=matrices,
                         sample_df=st.session_state.sample_df,
@@ -298,7 +303,7 @@ def run_app() -> None:
                             "run_log": "logs/run.log"
                         }
                     }
-                    from src.run_artifacts import save_dataset_manifest
+                    from iwa_rnaseq_counter.legacy.run_artifacts import save_dataset_manifest
                     save_dataset_manifest(run_dir, manifest_data)
                     
                     st.session_state.run_summary = run_summary

@@ -6,9 +6,9 @@ from typing import Any
 
 import pandas as pd
 
-from src.config import get_default_output_filenames
-from src.qc import evaluate_sample_qc
-from src.run_artifacts import save_sample_metadata_csv
+from .config import get_default_output_filenames
+from .qc import evaluate_sample_qc
+from .run_artifacts import save_sample_metadata_csv
 
 
 def load_tx2gene_map(tx2gene_path: str) -> pd.DataFrame:

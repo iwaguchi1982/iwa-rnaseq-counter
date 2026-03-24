@@ -105,14 +105,35 @@ def normalize_exclude_value(value) -> bool:
     return val == "true" if val not in ("", "none", "nan") else False
 
 
-def resolve_sample_sheet_path(path_value: str, input_dir: str | None = None) -> str | None:
-    """相対 / 絶対 path を解決する。"""
+def resolve_sample_sheet_path(path_value: str, input_dir: str | None = None, csv_dir: str | Path | None = None) -> str | None:
+    """相対 / 絶対 path を解決する。優先順位: 絶対パス > input_dir相対 > csv_dir相対 > CWD相対"""
     pv = str(path_value).strip()
     if not pv or pv == "nan" or pv == "None":
         return None
     pth = Path(pv)
-    if not pth.is_absolute() and input_dir:
-        pth = Path(input_dir) / pth
+    if pth.is_absolute():
+        return str(pth)
+    
+    # 1. input_dir があればそこから探す
+    if input_dir:
+        candidate = Path(input_dir) / pth
+        if candidate.exists():
+            return str(candidate)
+            
+    # 2. csv_dir があればそこから探す
+    if csv_dir:
+        candidate = Path(csv_dir) / pth
+        if candidate.exists():
+            return str(candidate)
+            
+    # 3. CWD からの相対パスで探す
+    if pth.exists():
+        return str(pth)
+        
+    # 4. どちらでも見つからない場合のフォールバック
+    if input_dir:
+        # 入力ディレクトリが指定されている場合は、そこからの相対パスであると期待するのが基本
+        return str(Path(input_dir) / pth)
     return str(pth)
 
 
@@ -185,6 +206,8 @@ def parse_sample_sheet(csv_path: str, input_dir: str | None = None) -> pd.DataFr
     df_csv = normalize_sample_sheet_columns(df_csv)
     df_csv = add_missing_metadata_columns(df_csv)
     
+    csv_dir = Path(csv_path).parent
+    
     rows = []
     for _, row in df_csv.iterrows():
         sid = str(row.get("sample_id", "")).strip()
@@ -202,8 +225,8 @@ def parse_sample_sheet(csv_path: str, input_dir: str | None = None) -> pd.DataFr
             
         exclude = normalize_exclude_value(row.get("exclude", ""))
         
-        r1_resolved = resolve_sample_sheet_path(row.get("r1_path", ""), input_dir)
-        r2_resolved = resolve_sample_sheet_path(row.get("r2_path", ""), input_dir)
+        r1_resolved = resolve_sample_sheet_path(row.get("r1_path", ""), input_dir, csv_dir)
+        r2_resolved = resolve_sample_sheet_path(row.get("r2_path", ""), input_dir, csv_dir)
         all_p = [p for p in [r1_resolved, r2_resolved] if p is not None]
         
         row_data = {

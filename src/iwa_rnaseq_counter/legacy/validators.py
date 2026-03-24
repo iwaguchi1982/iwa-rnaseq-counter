@@ -7,7 +7,7 @@ import shutil
 
 import pandas as pd
 
-from src.strandedness import validate_strandedness_selection
+from .strandedness import validate_strandedness_selection
 
 
 def validate_input_directory(input_dir: str) -> dict:
@@ -177,7 +177,8 @@ def validate_sample_paths_from_sheet(sample_df: pd.DataFrame) -> dict:
             continue
         missing = [p for p in all_p if not p or not Path(p).exists()]
         if missing:
-            errors.append(f"[{sid}] FASTQファイルが見つかりません: {', '.join([Path(p).name if p else 'None' for p in missing])}")
+            missing_paths = [str(Path(p).absolute()) if p else 'None' for p in missing]
+            errors.append(f"[{sid}] FASTQファイルが見つかりません: {', '.join(missing_paths)}")
             
     if errors:
         return {"is_valid": False, "errors": errors, "warnings": []}

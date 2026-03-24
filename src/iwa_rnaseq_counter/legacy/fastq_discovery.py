@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.config import get_supported_fastq_extensions
+from .config import get_supported_fastq_extensions
 
 
 def discover_fastq_files(input_dir: str) -> list[str]:
