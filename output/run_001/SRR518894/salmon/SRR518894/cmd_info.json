@@ -1,0 +1,11 @@
+{
+    "salmon_version": "1.10.1",
+    "index": "refs/yeast_r64_1_1/index/salmon_gentrome_k31",
+    "libType": "A",
+    "threads": "4",
+    "validateMappings": [],
+    "output": "output/run_001/SRR518894/salmon/SRR518894",
+    "mates1": "runs/SRR518894/SRR518894_1.fastq",
+    "mates2": "runs/SRR518894/SRR518894_2.fastq",
+    "auxDir": "aux_info"
+}

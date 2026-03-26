@@ -6,9 +6,9 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.config import get_strandedness_options
-from src.qc import evaluate_sample_qc
-from src.sample_parser import apply_sample_table_edits, parse_sample_sheet
+from iwa_rnaseq_counter.legacy.config import get_strandedness_options
+from iwa_rnaseq_counter.legacy.qc import evaluate_sample_qc
+from iwa_rnaseq_counter.legacy.sample_parser import apply_sample_table_edits, parse_sample_sheet
 
 
 def render_app_header() -> None:

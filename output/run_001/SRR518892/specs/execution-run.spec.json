@@ -1,0 +1,28 @@
+{
+  "run_id": "RUN_COUNTER_20260326_114601",
+  "app_name": "iwa_rnaseq_counter",
+  "app_version": "0.2.0",
+  "started_at": "2026-03-26T11:45:25.493955+09:00",
+  "input_refs": [
+    "ASSAY_SRR518892"
+  ],
+  "output_refs": [
+    "MAT_ASSAY_SRR518892"
+  ],
+  "parameters": {
+    "quantifier": "salmon",
+    "threads": 4,
+    "strandedness_mode": "Auto-detect",
+    "profile": "local",
+    "salmon_index": "refs/yeast_r64_1_1/index/salmon_gentrome_k31",
+    "tx2gene_path": "refs/yeast_r64_1_1/tx2gene.tsv"
+  },
+  "execution_backend": "local",
+  "finished_at": "2026-03-26T11:46:01.897674+09:00",
+  "status": "completed",
+  "log_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/output/run_001/SRR518892/logs/counter.log",
+  "metadata": {},
+  "overlay": {},
+  "$schema_name": "ExecutionRunSpec",
+  "$schema_version": "0.1.0"
+}
