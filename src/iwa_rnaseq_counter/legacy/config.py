@@ -12,7 +12,8 @@ def get_default_session_state() -> dict[str, Any]:
     defaults = {
         "analysis_name": "yeast_run",
         "input_dir": "",
-        "output_dir": "results",
+        "output_dir": "output",
+        "runs_root": "output",
         "scanned_fastq_files": None,
         "fastq_df": None,
         "detected_samples": None,
@@ -20,6 +21,8 @@ def get_default_session_state() -> dict[str, Any]:
         "salmon_index_path": "",
         "tx2gene_path": "",
         "threads": 4,
+        "current_job_id": None,
+        "selected_job_id": None,
         "run_status": "idle",
         "latest_log_summary": None,
         "output_files": None,
@@ -29,6 +32,7 @@ def get_default_session_state() -> dict[str, Any]:
         "salmon_version": "1.10.1",
         "discovery_mode": "auto",
         "last_csv_path": "",
+        "current_job_id": None,
     }
 
     # config.json からの上書き

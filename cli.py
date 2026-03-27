@@ -3,8 +3,9 @@ import logging
 import sys
 from pathlib import Path
 
-# Add src to sys.path to allow importing from iwa_rnaseq_counter package
+# Add local src and root src to sys.path
 sys.path.insert(0, str(Path(__file__).parent.resolve() / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.resolve() / "src"))
 
 from iwa_rnaseq_counter.io.read_assay_spec import read_assay_spec
 from iwa_rnaseq_counter.io.read_matrix_spec import read_matrix_spec
@@ -66,6 +67,13 @@ def main():
     p_merge.add_argument("--matrix-id", required=True, type=str)
     p_merge.add_argument("--run-id", type=str)
     p_merge.add_argument("--log-level", type=str, default="INFO")
+
+    p_gui = subparsers.add_parser("run-gui-backend", help="Execute the monolithic GUI pipeline via CLI for job running")
+    p_gui.add_argument("--config", required=True, type=Path)
+    p_gui.add_argument("--sample-sheet", required=True, type=Path)
+    p_gui.add_argument("--outdir", required=True, type=Path)
+    p_gui.add_argument("--started-at", type=str, required=True)
+    p_gui.add_argument("--log-level", type=str, default="INFO")
 
     args = parser.parse_args()
 
@@ -150,6 +158,37 @@ def main():
         write_matrix_spec(matrix_spec, args.outdir / "specs" / "matrix.spec.json")
         write_execution_run_spec(exec_spec, args.outdir / "specs" / "execution-run.spec.json")
         logger.info("build-analysis-matrix completed")
+
+
+    elif args.command == "run-gui-backend":
+        setup_logging(args.log_level, args.outdir / "logs" / "run.log")
+        logger = logging.getLogger(__name__)
+        
+        import json
+        import pandas as pd
+        from iwa_rnaseq_counter.pipeline.gui_backend import run_gui_backend_pipeline
+        
+        try:
+            with open(args.config, "r") as f:
+                config_data = json.load(f)
+            import ast
+            def parse_list(x):
+                try:
+                    if isinstance(x, str) and x.startswith("[") and x.endswith("]"):
+                        return ast.literal_eval(x)
+                    return x
+                except:
+                    return x
+
+            sample_df = pd.read_csv(args.sample_sheet)
+            for col in ["r1_paths", "r2_paths", "all_paths"]:
+                if col in sample_df.columns:
+                    sample_df[col] = sample_df[col].apply(parse_list)
+
+            run_gui_backend_pipeline(args.outdir, config_data, sample_df, args.started_at)
+        except Exception as e:
+            logger.error(f"GUI Backend pipeline failed: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
