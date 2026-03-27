@@ -30,18 +30,21 @@ def render_analysis_section() -> dict[str, Any]:
         output_dir = st.text_input("出力ディレクトリ", value=st.session_state.output_dir)
         
         # Discovery Mode
-        mode_options = {"auto": "FASTQ 自動認識 (input_dir)", "csv": "サンプルシート (CSV) 読込"}
+        mode_options = {"auto": "FASTQ 自動認識 (input_dir)", "csv": "サンプルシート (CSV) 読込", "fastq": "FASTQ 直接指定 (1サンプル)"}
+        current_mode = st.session_state.get("discovery_mode", "auto")
+        idx = list(mode_options.keys()).index(current_mode) if current_mode in mode_options else 0
         discovery_mode = st.radio(
             "サンプル認識モード",
             options=list(mode_options.keys()),
             format_func=lambda x: mode_options[x],
-            index=0 if st.session_state.get("discovery_mode", "auto") == "auto" else 1,
+            index=idx,
             horizontal=True
         )
 
     csv_path = ""
     load_csv_requested = False
     scan_requested = False
+    fastq_direct_input = {}
     
     if discovery_mode == "csv":
         c1, c2 = st.columns([3, 1])
@@ -62,8 +65,28 @@ def render_analysis_section() -> dict[str, Any]:
         """)
         with st.expander("CSV サンプル例を表示"):
             st.code("sample_id,r1_path,r2_path,layout,group,condition,replicate,batch,pair_id,note,display_name,color,exclude\nSRR518891,runs/SRA518891/SRR518891_1.fastq,runs/SRA518891/SRR518891_2.fastq,paired-end,control,control,1,batch1,,yeast control replicate 1,Control-1,#4C78A8,false\nSRR518892,runs/SRA518892/SRR518892_1.fastq,runs/SRA518892/SRR518892_2.fastq,paired-end,treated,treated,1,batch1,,yeast treated replicate 1,Treated-1,#F58518,false\n", language="csv")
+    elif discovery_mode == "fastq":
+        st.write("### FASTQ 直接指定 (1サンプル)")
+        f_c1, f_c2 = st.columns(2)
+        with f_c1:
+            fastq_direct_input["sample_id"] = st.text_input("Sample ID", value=st.session_state.get("fastq_sample_id", "sample_01"))
+            fastq_direct_input["layout"] = st.selectbox("Layout", ["paired-end", "single-end"], index=0 if st.session_state.get("fastq_layout", "paired-end") == "paired-end" else 1)
+            fastq_direct_input["exclude"] = st.checkbox("Exclude (解析対象から外す)", value=st.session_state.get("fastq_exclude", False))
+        with f_c2:
+            fastq_direct_input["r1_path"] = st.text_input("R1 FASTQ パス", value=st.session_state.get("fastq_r1_path", ""))
+            fastq_direct_input["r2_path"] = st.text_input("R2 FASTQ パス (paired-end のみ)", value=st.session_state.get("fastq_r2_path", ""))
+        
+        load_fastq_requested = st.button("Set Sample", use_container_width=False)
+        fastq_direct_input["load_requested"] = load_fastq_requested
     else:
         scan_requested = st.button("FASTQ をスキャン")
+        
+        if st.session_state.get("fastq_scan_completed") and st.session_state.get("fastq_scan_input_dir") == input_dir:
+            st.info(
+                f"✅ **スキャン完了**: {st.session_state.get('fastq_scan_timestamp')}\n\n"
+                f"**対象**: `{st.session_state.get('fastq_scan_input_dir')}`\n\n"
+                f"**検出**: {st.session_state.get('fastq_scan_file_count')} 個の FASTQ ファイル"
+            )
 
     # Sync to session state
     st.session_state.analysis_name = analysis_name
@@ -71,6 +94,12 @@ def render_analysis_section() -> dict[str, Any]:
     st.session_state.output_dir = output_dir
     st.session_state.discovery_mode = discovery_mode
     if csv_path: st.session_state.last_csv_path = csv_path
+    if discovery_mode == "fastq":
+        st.session_state.fastq_sample_id = fastq_direct_input["sample_id"]
+        st.session_state.fastq_layout = fastq_direct_input["layout"]
+        st.session_state.fastq_r1_path = fastq_direct_input["r1_path"]
+        st.session_state.fastq_r2_path = fastq_direct_input["r2_path"]
+        st.session_state.fastq_exclude = fastq_direct_input["exclude"]
 
     return {
         "analysis_name": analysis_name.strip(),
@@ -80,6 +109,7 @@ def render_analysis_section() -> dict[str, Any]:
         "csv_path": csv_path.strip(),
         "load_csv_requested": load_csv_requested,
         "scan_requested": scan_requested,
+        "fastq_direct_input": fastq_direct_input,
     }
 
 
@@ -136,14 +166,21 @@ def render_sample_section(sample_df: pd.DataFrame) -> pd.DataFrame:
     return apply_sample_table_edits(sample_df, edited_df)
 
 
-def render_reference_section() -> dict[str, str]:
+def render_reference_section() -> dict[str, Any]:
     st.subheader("4. 参照設定")
     salmon_index_path = st.text_input("Salmon index パス", value=st.session_state.salmon_index_path)
     tx2gene_path = st.text_input("tx2gene パス", value=st.session_state.tx2gene_path)
     st.caption("v0.1.0 では Salmon のみ有効です。")
+    
+    st.write("---")
+    st.write("💡 Strandedness (鎖特異性) の自動推定")
+    st.caption("サンプル一覧と Salmon index パスが揃っている場合、データをサンプリングして strandedness を推定できます。")
+    estimate_strandedness = st.button("Strandedness を推定", use_container_width=False)
+    
     return {
         "salmon_index_path": salmon_index_path.strip(),
         "tx2gene_path": tx2gene_path.strip(),
+        "estimate_strandedness": estimate_strandedness,
     }
 
 
@@ -249,7 +286,10 @@ def render_result_section(
                 st.markdown("#### 参照設定・環境")
                 st.write(f"**Quantifier:** `{run_summary.get('quantifier', 'salmon')}`")
                 st.write(f"**Quantifier Version:** `{run_summary.get('quantifier_version', 'N/A')}`")
-                st.write(f"**Inferred Lib Type:** `{run_summary.get('strandedness', {}).get('mode', 'N/A')}`")
+                
+                stranded_info = run_summary.get('strandedness') or {}
+                st.write(f"**Inferred Lib Type:** `{stranded_info.get('mode', 'N/A')}`")
+                
                 st.write(f"**Index:** `{Path(run_summary.get('salmon_index_path', '')).name}`")
                 st.write(f"**tx2gene:** `{Path(run_summary.get('tx2gene_path', '')).name}`")
 

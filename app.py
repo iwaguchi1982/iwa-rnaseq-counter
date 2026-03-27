@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent / "src"))
 
 from iwa_rnaseq_counter.legacy.config import get_default_session_state
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from iwa_rnaseq_counter.legacy.fastq_discovery import collect_fastq_metadata, discover_fastq_files
 from iwa_rnaseq_counter.legacy.sample_parser import (
     apply_sample_table_edits,
@@ -88,6 +88,12 @@ def run_app() -> None:
         layout_map = infer_sample_layout(sample_groups)
         lane_map = detect_lane_groups(sample_groups)
         st.session_state.sample_df = build_sample_table(sample_groups, layout_map, lane_map)
+        
+        st.session_state.fastq_scan_input_dir = st.session_state.input_dir
+        st.session_state.fastq_scan_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state.fastq_scan_file_count = len(fastq_files)
+        st.session_state.fastq_scan_completed = True
+        
         st.success("FASTQ をスキャンしました。")
 
     if analysis_values.get("load_csv_requested") and analysis_values.get("csv_path"):
@@ -97,6 +103,39 @@ def run_app() -> None:
             st.success(f"CSV から {len(csv_df)} サンプルを読み込みました。")
         except Exception as e:
             st.error(f"CSV 読み込みエラー: {e}")
+
+    fq_direct = analysis_values.get("fastq_direct_input", {})
+    if fq_direct.get("load_requested"):
+        sid = fq_direct.get("sample_id", "").strip()
+        r1 = fq_direct.get("r1_path", "").strip()
+        if not sid or not r1:
+            st.error("FASTQ 直接指定では Sample ID と R1 パスが必須です。")
+        else:
+            r2 = fq_direct.get("r2_path", "").strip()
+            layout = fq_direct.get("layout", "paired-end")
+            all_p = [p for p in [r1, r2] if p]
+            df_data = {
+                "sample_id": [sid],
+                "layout_predicted": [layout],
+                "layout_final": [layout],
+                "lane_count": [1],
+                "file_count": [len(all_p)],
+                "status": ["ok"],
+                "r1_paths": [[r1]] if r1 else [[]],
+                "r2_paths": [[r2]] if r2 else [[]],
+                "all_paths": [all_p],
+                "notes": ["Loaded from GUI"],
+                "input_source": ["gui_fastq_direct"],
+                "condition": [sid],
+                "display_name": [sid],
+                "exclude": [fq_direct.get("exclude", False)],
+            }
+            # Add missing standard metadata columns
+            for c in ["group", "replicate", "batch", "pair_id", "note", "color"]:
+                df_data[c] = [""]
+            
+            st.session_state.sample_df = pd.DataFrame(df_data)
+            st.success("FASTQ 直接指定を 1行のサンプルシートとして反映しました。")
 
     # UI Components
     render_fastq_section(st.session_state.get("fastq_df"))
@@ -112,14 +151,21 @@ def run_app() -> None:
     index_validation = validate_salmon_index(st.session_state.salmon_index_path)
     tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
-    strandedness_result = None
-    if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
-        strandedness_result = infer_strandedness(
-            sample_df=st.session_state.sample_df,
-            input_dir=st.session_state.input_dir,
-            salmon_index_path=st.session_state.salmon_index_path,
-        )
-        st.session_state.strandedness_prediction = strandedness_result
+    if st.session_state.get("last_salmon_index_path") != st.session_state.salmon_index_path:
+        st.session_state.strandedness_prediction = None
+        st.session_state.last_salmon_index_path = st.session_state.salmon_index_path
+
+    if reference_values.get("estimate_strandedness"):
+        if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
+            with st.spinner("Strandedness を推定中..."):
+                strandedness_result = infer_strandedness(
+                    sample_df=st.session_state.sample_df,
+                    input_dir=st.session_state.input_dir,
+                    salmon_index_path=st.session_state.salmon_index_path,
+                )
+                st.session_state.strandedness_prediction = strandedness_result
+        else:
+            st.warning("サンプル表が空、または Salmon Index パスが無効なため、推定できません。")
 
     # Final validation for RUN button state
     run_validation = validate_run_conditions(
@@ -142,9 +188,9 @@ def run_app() -> None:
 
     if run_values["run_requested"]:
         from iwa_rnaseq_counter.legacy.run_artifacts import setup_run_directory, save_run_config, save_sample_sheet, build_output_manifest
-        
         st.session_state.run_status = "running"
         start_time = time.time()
+        started_at_iso = datetime.now(timezone.utc).astimezone().isoformat()
         try:
             run_dir = setup_run_directory(st.session_state.output_dir, st.session_state.analysis_name)
             master_log_path = run_dir / "logs" / "run.log"
@@ -175,6 +221,7 @@ def run_app() -> None:
                         "analysis_name": st.session_state.analysis_name,
                         "input_dir": st.session_state.input_dir,
                         "output_dir": st.session_state.output_dir,
+                        "discovery_mode": st.session_state.get("discovery_mode", "auto"),
                         "salmon_index_path": st.session_state.salmon_index_path,
                         "tx2gene_path": st.session_state.tx2gene_path,
                         "strandedness_mode": st.session_state.strandedness_mode,
@@ -183,6 +230,22 @@ def run_app() -> None:
                     }
                     config_path = save_run_config(run_dir, config_data)
                     sample_sheet_path = save_sample_sheet(run_dir, st.session_state.sample_df)
+
+                    inputs_dir = run_dir / "inputs"
+                    inputs_dir.mkdir(exist_ok=True)
+                    
+                    gui_state = {k: str(v) for k, v in st.session_state.items() if isinstance(v, (str, int, float, bool))}
+                    gui_df = pd.DataFrame([gui_state])
+                    gui_df.to_csv(inputs_dir / "gui_input_status.csv", index=False)
+
+                    if st.session_state.get("discovery_mode") != "csv":
+                        auto_df = st.session_state.sample_df.copy()
+                        auto_df["r1_path"] = auto_df.get("r1_paths", pd.Series([[]] * len(auto_df))).apply(lambda x: x[0] if isinstance(x, list) and x else "")
+                        auto_df["r2_path"] = auto_df.get("r2_paths", pd.Series([[]] * len(auto_df))).apply(lambda x: x[0] if isinstance(x, list) and x else "")
+                        auto_df["layout"] = auto_df.get("layout_final", "paired-end")
+                        
+                        cols = ["sample_id", "r1_path", "r2_path", "layout", "exclude"]
+                        auto_df[cols].to_csv(inputs_dir / "auto_generated.sample_sheet.csv", index=False)
 
                     # 5. Aggregate
                     status.update(label=f"Aggregating {len(success_outputs)} samples...", expanded=True)
@@ -310,6 +373,19 @@ def run_app() -> None:
                     st.session_state.output_files = build_output_manifest(
                         run_dir, output_paths, config_path, sample_sheet_path, master_log_path
                     )
+                    
+                    try:
+                        from iwa_rnaseq_counter.builders.gui_artifact_export import write_gui_supporting_inputs
+                        write_gui_supporting_inputs(
+                            run_dir=run_dir,
+                            run_summary=run_summary,
+                            matrix_rel_path="results/gene_numreads.csv",
+                            log_rel_path="logs/run.log",
+                            started_at=started_at_iso
+                        )
+                    except Exception as spec_err:
+                        st.warning(f"Failed to generate pipeline specs: {spec_err}")
+                    
                     st.session_state.run_status = "success"
                     
                     if failure_count > 0:

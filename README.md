@@ -32,11 +32,12 @@ pixi run streamlit run app.py
 > 以前の iwa_rnaseq_counter.py は app.py に名称変更されています。
 
 ### Web アプリでの基本的な流れ
-1. 入力ファイルや解析条件を確認する
-2. サンプル情報をそろえる
-3. 実行する
-4. count 結果を保存する
-5. 必要に応じて、次の解析アプリへ進む
+1. サンプル認識モードを選択する（FASTQ直接指定 / CSV読込 / ディレクトリ自動認識）
+2. サンプル情報や比較群、除外フラグ（Exclude）を整理する
+3. `RUN START` で実行する
+4. count 結果やレポート連携用の manifest 等を保存する
+5. 必要に応じて、次の解析アプリ（reporter）へ進む
+> 単体サンプルでも複数サンプルでも、同じ `sample_sheet.csv` 形式で扱えるようにしています。
 
 ### Web アプリで意識すればよいこと
 まず利用時に気にすればよいのは次の点です。
@@ -120,13 +121,17 @@ SP004,/data/fastq/SP004_R1.fastq.gz,,single,control,baseline,2,batch2,,Control 2
 - r2_path は空欄
 
 ## 7. 出力されるもの
+
 主に次のものが出力されます。
 
 - gene / transcript の count 結果
 - 実行結果の保存フォルダ
-- 複数サンプルをまとめた結果
-- 実行記録
-- 次の解析アプリに渡しやすい形式の結果
+- `dataset_manifest.json`
+- `inputs/auto_generated.sample_sheet.csv`（FASTQ 直読み込み時）
+- `inputs/gui_input_status.csv`（GUI 実行時）
+- 次の解析アプリに渡しやすい形にまとめた結果
+- 実行記録や内部設定ファイル（内部連携用）
+
 
 ## 8. 動作確認済み条件 (v0.2.0)
 - OS: Linux (WSL2 / Ubuntu 24.04 等)

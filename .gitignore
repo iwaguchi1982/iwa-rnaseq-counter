@@ -17,6 +17,8 @@ refs/
 results/
 logs/
 sample_sheet/
+work/
+output/
 *.log
 
 Mod_MEMO.txt
