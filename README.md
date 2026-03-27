@@ -85,31 +85,26 @@ SP004,/data/fastq/SP004_R1.fastq.gz,,single,control,baseline,2,batch2,,Control 2
 - sample_id
   サンプル名です。結果表の列名や表示名の元になります。
 - r1_path
-  R1 FASTQ のパスです。single-end でも使います。
+  R1 FASTQ のパスです。シングルエンドでもペアエンドでも必須です。
+
+### 任意列（推奨・自動補完あり）
 - layout
-  single または paired を指定します。
-- paired-end のときに必要
-  r2_path
-- layout=paired のとき必須です。layout=single のときは空欄で構いません。
-### 任意列
-- group
-  比較群の目安です。例: case, control
-- condition
-  条件名のメモです。例: baseline, treated
-- replicate
-  反復番号や区別用の情報です。
-- batch
-  バッチ情報です。
-- pair_id
-  対応のあるサンプルを扱いたいときの識別子です。
-- display_name
-  画面表示用の名前です。
-- color
-  表示色の指定です。
+  `single` または `paired` を指定します。
+  - **空欄の場合**: `r2_path` があれば `paired`、なければ `single` と自動推論します。
+- r2_path
+  R2 FASTQ のパスです。`layout` が `paired` の場合は必須です。
 - exclude
-  true の場合、その行を解析対象から外せるようにするための列です。
+  その行を解析対象から外す場合に `true` (または `1`, `yes`, `on`) を記入します。
+
+### その他（解析やレポートで使用）
+- group, condition, replicate, batch, pair_id
+  比較解析や図示の際にグループ分けとして利用されます。
+- display_name
+  グラフなどで表示する際の別名です。
+- color
+  表示色の指定です（例: #ff0000）。
 - note
-  補足メモです。
+  解析には影響しない自由なメモです。
 
 ## 6. single-end / paired-end の書き方
 ### paired-end の場合

@@ -234,18 +234,50 @@ def run_app() -> None:
                     inputs_dir = run_dir / "inputs"
                     inputs_dir.mkdir(exist_ok=True)
                     
-                    gui_state = {k: str(v) for k, v in st.session_state.items() if isinstance(v, (str, int, float, bool))}
+                    # Identify important session state for reproducibility
+                    REPRODUCIBILITY_KEYS = [
+                        "analysis_name", "input_dir", "output_dir", "discovery_mode",
+                        "salmon_index_path", "tx2gene_path", "strandedness_mode",
+                        "threads", "strandedness_prediction"
+                    ]
+                    gui_state = {k: str(st.session_state.get(k)) for k in REPRODUCIBILITY_KEYS if k in st.session_state}
                     gui_df = pd.DataFrame([gui_state])
                     gui_df.to_csv(inputs_dir / "gui_input_status.csv", index=False)
 
                     if st.session_state.get("discovery_mode") != "csv":
+                        # Generate normalized sample sheet from GUI selection
                         auto_df = st.session_state.sample_df.copy()
-                        auto_df["r1_path"] = auto_df.get("r1_paths", pd.Series([[]] * len(auto_df))).apply(lambda x: x[0] if isinstance(x, list) and x else "")
-                        auto_df["r2_path"] = auto_df.get("r2_paths", pd.Series([[]] * len(auto_df))).apply(lambda x: x[0] if isinstance(x, list) and x else "")
-                        auto_df["layout"] = auto_df.get("layout_final", "paired-end")
                         
-                        cols = ["sample_id", "r1_path", "r2_path", "layout", "exclude"]
-                        auto_df[cols].to_csv(inputs_dir / "auto_generated.sample_sheet.csv", index=False)
+                        # Ensure we have the standard columns for the exported sample sheet
+                        export_cols = ["sample_id", "r1_path", "r2_path", "layout", "exclude"]
+                        # Drop if already exist to avoid duplicates during re-assignment
+                        auto_df = auto_df.drop(columns=[c for c in export_cols if c in auto_df.columns])
+                        
+                        auto_df["sample_id"] = st.session_state.sample_df["sample_id"]
+                        
+                        # Resolve paths to absolute for the auto-generated sheet
+                        def get_first_path(paths):
+                            if isinstance(paths, list) and len(paths) > 0:
+                                return str(Path(paths[0]).absolute())
+                            return ""
+
+                        auto_df["r1_path"] = st.session_state.sample_df.get("r1_paths", pd.Series([[]] * len(st.session_state.sample_df))).apply(get_first_path)
+                        auto_df["r2_path"] = st.session_state.sample_df.get("r2_paths", pd.Series([[]] * len(st.session_state.sample_df))).apply(get_first_path)
+                        
+                        # Map internal layout to sample sheet layout
+                        def map_layout(l):
+                            if l in ("single-end", "se"): return "single"
+                            if l in ("paired-end", "pe"): return "paired"
+                            return l
+                        
+                        auto_df["layout"] = st.session_state.sample_df.get("layout_final", "paired").apply(map_layout)
+                        auto_df["exclude"] = st.session_state.sample_df.get("exclude", False)
+                        
+                        # Keep metadata columns
+                        metadata_cols = [c for c in st.session_state.sample_df.columns if c not in ["r1_paths", "r2_paths", "layout_final", "input_source"]]
+                        final_cols = export_cols + [c for c in metadata_cols if c not in export_cols]
+                        
+                        auto_df[final_cols].to_csv(inputs_dir / "auto_generated.sample_sheet.csv", index=False)
 
                     # 5. Aggregate
                     status.update(label=f"Aggregating {len(success_outputs)} samples...", expanded=True)

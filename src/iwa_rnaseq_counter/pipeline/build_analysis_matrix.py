@@ -83,7 +83,7 @@ def build_analysis_matrix(
         source_subject_ids=source_subject_ids,
         metadata={
             "producer_app": "iwa_rnaseq_counter",
-            "producer_version": "0.3.0",
+            "producer_version": "0.3.5",
             "merge_strategy": "column_bind_by_feature_id",
             "sample_metadata_path": str(sample_metadata_path),
             "sample_ids": source_specimen_ids,

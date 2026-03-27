@@ -100,7 +100,7 @@ def run_counter_pipeline(
         source_subject_ids=source_subject_ids,
         metadata={
             "producer_app": "iwa_rnaseq_counter",
-            "producer_version": "0.3.0",
+            "producer_version": "0.3.5",
             "quantifier": quantifier,
             "salmon_index": str(salmon_index),
             "tx2gene_path": str(tx2gene),
@@ -118,7 +118,7 @@ def run_counter_pipeline(
         schema_version="0.1.0",
         run_id=run_id or f"RUN_COUNTER_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         app_name="iwa_rnaseq_counter",
-        app_version="0.3.0",
+        app_version="0.3.5",
         input_refs=[assay_spec.assay_id],
         output_refs=[matrix_spec.matrix_id],
         parameters={

@@ -28,7 +28,7 @@ def build_matrix_spec_from_gui_result(
     
     metadata = {
         "producer_app": "iwa_rnaseq_counter",
-        "producer_version": "0.3.1",
+        "producer_version": "0.3.5",
         "run_origin": "gui",
         "gui_mode": run_summary.get("discovery_mode", "unknown"),
         "sample_ids": sample_ids,
@@ -92,7 +92,7 @@ def build_execution_run_spec_from_gui_result(
         schema_version="0.1.0",
         run_id=run_name,
         app_name="iwa_rnaseq_counter",
-        app_version="0.3.1",
+        app_version="0.3.5",
         input_refs=assay_ids,
         output_refs=[matrix_spec.matrix_id],
         parameters=parameters,
