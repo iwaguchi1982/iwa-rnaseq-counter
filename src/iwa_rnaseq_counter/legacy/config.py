@@ -23,6 +23,8 @@ def get_default_session_state() -> dict[str, Any]:
         "threads": 4,
         "selected_job_id": None,
         "needs_initial_recovery": True,
+        "view_mode": "run",
+        "ui_notice": None,
         "run_status": "idle",
         "latest_log_summary": None,
         "output_files": None,

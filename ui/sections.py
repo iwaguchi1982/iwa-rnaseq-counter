@@ -402,24 +402,20 @@ def format_elapsed_time(seconds: float | None, status: str) -> str:
     return f"{s}s"
 
 
-def render_job_sidebar(
+def render_job_history_panel(
     recent_runs: list[Any], 
     selected_job_id: str | None
 ) -> str | None:
     """
-    Renders the job history sidebar and returns the ID of the selected job.
+    Renders the job history panel (formerly sidebar) and returns the ID of the selected job.
     """
-    st.markdown("---")
-    if st.button("➕ New Analysis", use_container_width=True):
-        return None  # Represents "New Analysis" mode
-
     st.markdown("### 🕒 Job History")
     
     if not recent_runs:
         st.caption("No valid runs found in this root.")
         return selected_job_id
 
-    # Sidebar navigator
+    # List navigator
     new_selection = selected_job_id
     
     for run in recent_runs:
@@ -445,12 +441,11 @@ def render_job_sidebar(
         # Label: [ICON] RUN_NAME
         label = f"{status_icon} {run.run_name}"
         
-        # Layout: Name & Status on left, Time on right
         col_name, col_time = st.columns([3, 1])
         with col_name:
             if st.button(
                 label, 
-                key=f"sidebar_job_{job_id}", 
+                key=f"history_job_{job_id}", 
                 help=f"ID: {job_id}",
                 use_container_width=True,
                 type="primary" if is_selected else "secondary"
