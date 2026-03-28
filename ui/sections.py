@@ -386,3 +386,85 @@ def render_result_section(
     if log_summary:
         with st.expander("Master Execution Log (Summary)", expanded=True):
             st.text_area("Log summary", value=log_summary, height=400, label_visibility="collapsed", key="run_log_summary")
+def format_elapsed_time(seconds: float | None, status: str) -> str:
+    """Formats elapsed time based on status for UI display."""
+    if status == "queued":
+        return "waiting..."
+    if seconds is None or seconds <= 0:
+        return "--"
+    
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+def render_job_sidebar(
+    recent_runs: list[Any], 
+    selected_job_id: str | None
+) -> str | None:
+    """
+    Renders the job history sidebar and returns the ID of the selected job.
+    """
+    st.markdown("---")
+    if st.button("➕ New Analysis", use_container_width=True):
+        return None  # Represents "New Analysis" mode
+
+    st.markdown("### 🕒 Job History")
+    
+    if not recent_runs:
+        st.caption("No valid runs found in this root.")
+        return selected_job_id
+
+    # Sidebar navigator
+    new_selection = selected_job_id
+    
+    for run in recent_runs:
+        job_id = run.run_dir.name
+        status = (run.status or "unknown").lower()
+        
+        # Status Icon selection
+        status_icon = "❔"
+        if status == "running":
+            status_icon = "🔵"
+        elif status == "queued":
+            status_icon = "⏳"
+        elif status == "completed":
+            status_icon = "✅"
+        elif status == "failed":
+            status_icon = "❌"
+            
+        elapsed_str = format_elapsed_time(run.elapsed_seconds, status)
+        
+        # Highlight if selected
+        is_selected = (selected_job_id == job_id)
+        
+        # Label: [ICON] RUN_NAME
+        label = f"{status_icon} {run.run_name}"
+        
+        # Layout: Name & Status on left, Time on right
+        col_name, col_time = st.columns([3, 1])
+        with col_name:
+            if st.button(
+                label, 
+                key=f"sidebar_job_{job_id}", 
+                help=f"ID: {job_id}",
+                use_container_width=True,
+                type="primary" if is_selected else "secondary"
+            ):
+                new_selection = job_id
+            
+            # Show STATUS explicitly as text
+            status_display = f"STATUS: {status}"
+            if is_selected:
+                st.caption(f"**{status_display}**  •  selected")
+            else:
+                st.caption(status_display)
+                
+        with col_time:
+            st.caption(elapsed_str)
+            
+    return new_selection

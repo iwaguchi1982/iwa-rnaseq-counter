@@ -34,12 +34,15 @@ from ui.sections import (
     render_analysis_section,
     render_app_header,
     render_fastq_section,
+    render_job_sidebar,
     render_reference_section,
     render_result_section,
     render_run_section,
     render_sample_section,
+    format_elapsed_time,
 )
-from iwa_job_runner.models.job_summary import discover_jobs, load_job_summary
+from iwa_job_runner.models.run_discovery import resolve_runs_root, discover_runs
+from iwa_job_runner.models.run_selection import pick_active_run, sort_runs_for_sidebar
 from iwa_job_runner.core.run_artifacts import setup_run_directory
 from iwa_job_runner.core.executor import LocalJobExecutor
 from iwa_job_runner.models.job_request import JobRequestSpec
@@ -56,58 +59,76 @@ def init_session_state() -> None:
         st.session_state.output_dir = "output"
     if st.session_state.get("runs_root") == "results":
         st.session_state.runs_root = "output"
+    
+    # Backward compatibility: 旧セッションで recovery フラグが無ければ初回復元を有効化
+    if "needs_initial_recovery" not in st.session_state:
+        st.session_state.needs_initial_recovery = True
 
 def run_app() -> None:
     st.set_page_config(page_title="iwa-rnaseq-counter", layout="wide")
     render_app_header()
 
-    # 1. Background Job Discovery & Recovery
+    # 1. Runs Root & Job Discovery
     with st.sidebar:
         st.markdown("### 📂 Data Location")
-        root_input = st.text_input("Runs Root (History)", value=st.session_state.runs_root, help="Directory to scan for previous analysis runs.")
-        if root_input != st.session_state.runs_root:
+        root_default = st.session_state.get("runs_root", "output")
+        root_input = st.text_input("Runs Root (History)", value=root_default, help="Directory to scan for previous analysis runs.")
+        
+        if root_input != st.session_state.get("runs_root"):
             st.session_state.runs_root = root_input
+            st.session_state.selected_job_id = None 
+            st.session_state.needs_initial_recovery = True # Trigger re-recovery on root change
             st.rerun()
             
         if st.button("🔄 Refresh Jobs", use_container_width=True):
             st.rerun()
 
-    output_base = Path(st.session_state.runs_root)
-    if not output_base.exists():
+    # Resolve and discover
+    runs_root_path = resolve_runs_root(st.session_state.runs_root)
+    if not runs_root_path.exists():
         st.sidebar.error(f"Root not found: {st.session_state.runs_root}")
-        recent_summaries = []
+        recent_runs = []
     else:
-        recent_summaries = discover_jobs(output_base)
+        recent_runs = discover_runs(runs_root_path)
     
-    # Session Recovery: If a job is running and nothing is selected, auto-select it
-    if st.session_state.selected_job_id is None:
-        running_jobs = [s for s in recent_summaries if s.status in ("queued", "running")]
-        if running_jobs:
-            st.session_state.selected_job_id = running_jobs[0].job_id
-
-    # 2. Sidebar Job List
-    with st.sidebar:
-        st.markdown("---")
-        if st.button("➕ New Analysis", use_container_width=True):
-            st.session_state.selected_job_id = None
-            # Clear run status to avoid showing old results in New Analysis mode
-            st.session_state.run_status = "idle"
-            st.rerun()
-
-        st.markdown("### 🕒 Job History")
-        if not recent_summaries:
-            st.caption("No recent jobs found.")
+    # 2. Stable Session Recovery / Selection
+    #真のソースは Runs Root 配下の run artifact。
+    if st.session_state.needs_initial_recovery:
+        # First load recovery or root change recovery
+        suggestion = pick_active_run(recent_runs, None)
+        st.session_state.selected_job_id = suggestion.run_dir.name if suggestion else None
+        st.session_state.needs_initial_recovery = False
+        
+    elif st.session_state.selected_job_id is not None:
+        # User is already in Job View Mode.
+        # Just resolve the current selection (it might have been updated by background processes)
+        hint_id = st.session_state.selected_job_id
+        hint_path = str(runs_root_path / hint_id)
+        
+        suggestion = pick_active_run(recent_runs, hint_path)
+        if suggestion:
+            new_id = suggestion.run_dir.name
+            if st.session_state.selected_job_id != new_id:
+                st.session_state.selected_job_id = new_id
         else:
-            for summary in recent_summaries:
-                status_icon = "⏳" if summary.status in ("queued", "running") else "✅" if summary.status == "completed" else "❌"
-                label = f"{status_icon} {summary.run_name}"
-                
-                # Highlight if selected
-                is_selected = (st.session_state.selected_job_id == summary.job_id)
-                if st.button(label, key=f"job_{summary.job_id}", help=f"ID: {summary.job_id}", use_container_width=True, type="secondary" if not is_selected else "primary"):
-                    st.session_state.selected_job_id = summary.job_id
-                    st.rerun()
+            # stale selection (e.g. current job deleted or moved out of root)
+            # 候補が取れないときは、自動的に New Analysis に落とす
+            st.session_state.selected_job_id = None
+    else:
+        # Explicit None (New Analysis) -> Stay in New Analysis Mode
+        pass
 
+    # 3. Sidebar Job Navigator Integration
+    sorted_runs = sort_runs_for_sidebar(recent_runs)
+    selected_from_sidebar = render_job_sidebar(sorted_runs, st.session_state.selected_job_id)
+    
+    if selected_from_sidebar != st.session_state.selected_job_id:
+        st.session_state.selected_job_id = selected_from_sidebar
+        st.session_state.needs_initial_recovery = False # User made an explicit choice
+        st.rerun()
+
+    # 4. Shared Maintainance
+    with st.sidebar:
         st.markdown("---")
         st.markdown("### メンテナンス")
         if st.button("❌ Session State Clear"):
@@ -118,7 +139,7 @@ def run_app() -> None:
     # Shared Validation results (initially empty)
     name_validation = input_validation = output_validation = index_validation = tx2gene_validation = run_validation = {}
 
-    # 3. Main View Mode Selection
+    # 5. Main View Mode Selection
     if st.session_state.selected_job_id is None:
         # ==========================================
         # INPUT MODE
@@ -212,6 +233,7 @@ def run_app() -> None:
             started_at_iso = datetime.now(timezone.utc).astimezone().isoformat()
             job_id = f"RUN_GUI_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
+            # Use current output_dir as root for the new job
             dirs = setup_run_directory(Path(st.session_state.output_dir), job_id)
             
             config_data = {
@@ -268,41 +290,41 @@ def run_app() -> None:
             executor.submit(request)
             
             st.session_state.selected_job_id = job_id
+            st.session_state.needs_initial_recovery = False
             st.rerun()
 
     else:
         # ==========================================
         # JOB VIEW MODE
         # ==========================================
-        # ==========================================
-        # JOB VIEW MODE
-        # ==========================================
-        current_job = next((s for s in recent_summaries if s.job_id == st.session_state.selected_job_id), None)
+        current_job = next((s for s in recent_runs if s.run_dir.name == st.session_state.selected_job_id), None)
         
         if not current_job:
-            st.error(f"Selected job {st.session_state.selected_job_id} not found in {st.session_state.runs_root}")
-            if st.button("Back to New Analysis"):
-                st.session_state.selected_job_id = None
-                st.rerun()
+            # Stale selection detected inside Job View mode
+            # Try once to pick the best active run, or fall back to New Analysis
+            suggestion = pick_active_run(recent_runs, None)
+            st.session_state.selected_job_id = suggestion.run_dir.name if suggestion else None
+            st.session_state.needs_initial_recovery = False
+            st.rerun()
             return
 
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
             st.subheader(f"Job: {current_job.run_name}")
-            st.caption(f"ID: `{current_job.job_id}`")
+            st.caption(f"ID: `{current_job.run_dir.name}`")
         with col2:
             status_color = "green" if current_job.status == "completed" else "orange" if current_job.status in ("queued", "running") else "red"
             st.markdown(f"**Status:** :{status_color}[{current_job.status.upper()}]")
             st.markdown(f"**Started:** {current_job.started_at or 'N/A'}")
         with col3:
             st.markdown(f"**Samples:** {current_job.sample_count}")
-            st.markdown(f"**Elapsed:** {current_job.elapsed_seconds / 60:.1f} min")
+            st.markdown(f"**Elapsed:** {format_elapsed_time(current_job.elapsed_seconds, current_job.status)}")
         
         st.markdown("---")
 
-        # Monitoring uses the parent of the job's output_dir as the base
-        monitor = JobMonitor(Path(current_job.output_dir).parent)
-        spec = monitor.get_status(current_job.job_id)
+        # Monitoring uses the parent of the job's run_dir as the base
+        monitor = JobMonitor(current_job.run_dir.parent)
+        spec = monitor.get_status(current_job.run_dir.name)
         
         if spec:
             if spec.status in ("queued", "running"):
@@ -313,7 +335,7 @@ def run_app() -> None:
                 st.rerun()
                 
             elif spec.status == "completed":
-                run_dir = Path(current_job.output_dir)
+                run_dir = current_job.run_dir
                 
                 # Load results locally for rendering
                 job_run_summary = None
@@ -343,7 +365,7 @@ def run_app() -> None:
 
             elif spec.status == "failed":
                 st.error(f"Job {spec.run_id} failed!")
-                st.info(f"Check logs at: `{Path(current_job.output_dir) / 'logs' / 'run.log'}`")
+                st.info(f"Check logs at: `{current_job.run_dir / 'logs' / 'run.log'}`")
         else:
             st.warning("Could not retrieve job status.")
 
