@@ -122,12 +122,16 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         run_output_dir=run_dir
     )
     
-    import shutil
-    try:
-        shutil.copy(tx2gene_path, run_dir / "results" / "feature_annotation.tsv")
-    except Exception as e:
-        logger.warning(f"Failed to copy feature_annotation.tsv: {e}")
+    # Step 3: Prepare feature_annotation.tsv (v0.5.0 Contract)
+    from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
+    annotation_out = get_standard_annotation_path(run_dir)
+    has_annotation = prepare_feature_annotation(tx2gene_path, annotation_out)
     
+    if has_annotation:
+        logger.info(f"Feature annotation prepared at {annotation_out}")
+    else:
+        logger.warning("Could not prepare feature_annotation.tsv. Reporter will fall back to feature_id.")
+
     manifest_data = {
         "manifest_version": "1.0",
         "generated_at": datetime.now().astimezone().isoformat(),
@@ -160,6 +164,9 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         }
     }
     
+    if has_annotation:
+        manifest_data["files"]["feature_annotation"] = "results/feature_annotation.tsv"
+    
     save_dataset_manifest(run_dir, manifest_data)
     
     try:
@@ -168,7 +175,9 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
             run_summary=run_summary,
             matrix_rel_path="results/gene_numreads.csv",
             log_rel_path="logs/run.log",
-            started_at=started_at_iso
+            started_at=started_at_iso,
+            feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
+            feature_annotation_available=has_annotation
         )
     except Exception as spec_err:
         logger.warning(f"Failed to generate pipeline specs: {spec_err}")

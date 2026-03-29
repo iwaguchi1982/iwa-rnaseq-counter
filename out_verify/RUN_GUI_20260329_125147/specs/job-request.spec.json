@@ -1,0 +1,28 @@
+{
+  "job_id": "RUN_GUI_20260329_125147",
+  "requested_app": "iwa_rnaseq_counter_gui_backend",
+  "command": [
+    "pixi",
+    "run",
+    "python",
+    "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/cli.py",
+    "run-gui-backend",
+    "--config",
+    "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/run_config.json",
+    "--sample-sheet",
+    "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/sample_sheet.csv",
+    "--outdir",
+    "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147",
+    "--started-at",
+    "2026-03-29T12:51:47.869844+09:00"
+  ],
+  "parameters": {
+    "config": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/run_config.json",
+    "sample_sheet": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/sample_sheet.csv",
+    "started_at": "2026-03-29T12:51:47.869844+09:00"
+  },
+  "inputs": [],
+  "resources": {
+    "threads": 4
+  }
+}

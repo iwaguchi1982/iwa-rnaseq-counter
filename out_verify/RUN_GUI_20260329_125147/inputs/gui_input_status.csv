@@ -1,0 +1,10 @@
+parameter,value
+analysis_name,VERIFY_V0_5_0_GAP
+input_dir,/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/SRR518893
+output_dir,/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify
+salmon_index_path,/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/refs/yeast_r64_1_1/index/salmon_gentrome_k31
+tx2gene_path,/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/refs/yeast_r64_1_1/tx2gene.tsv
+strandedness_mode,unstranded
+threads,4
+started_at,2026-03-29T12:51:47.869844+09:00
+job_id,RUN_GUI_20260329_125147

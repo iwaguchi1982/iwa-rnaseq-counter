@@ -1,0 +1,11 @@
+{
+    "salmon_version": "1.10.1",
+    "index": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/refs/yeast_r64_1_1/index/salmon_gentrome_k31",
+    "libType": "IU",
+    "threads": "4",
+    "validateMappings": [],
+    "output": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_124930/salmon/SRR518893",
+    "mates1": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/SRR518893/SRR518893_1.fastq",
+    "mates2": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/SRR518893/SRR518893_2.fastq",
+    "auxDir": "aux_info"
+}

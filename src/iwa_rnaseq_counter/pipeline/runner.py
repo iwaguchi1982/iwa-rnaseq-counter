@@ -78,6 +78,13 @@ def run_counter_pipeline(
 
     matrix_path = counts_dir / "gene_numreads.tsv"
     g_nr_df.to_csv(matrix_path, sep="\t")
+    
+    # v0.5.1: Prepare standardized feature_annotation.tsv
+    from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
+    annotation_out = get_standard_annotation_path(outdir)
+    # Ensure results dir exists
+    (outdir / "results").mkdir(exist_ok=True)
+    has_annotation = prepare_feature_annotation(tx2gene, annotation_out)
 
     subject_id = assay_spec.metadata.get("subject_id")
     source_subject_ids = [subject_id] if subject_id else []
@@ -92,9 +99,10 @@ def run_counter_pipeline(
         value_type="integer",
         normalization="raw",
         feature_id_system="ensembl_gene_id",
+        # Use specimen as axis
         sample_axis="specimen",
         matrix_path=str(matrix_path.resolve()),
-        feature_annotation_path=str(tx2gene) if tx2gene else "",
+        feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
         source_assay_ids=[assay_spec.assay_id],
         source_specimen_ids=[assay_spec.specimen_id],
         source_subject_ids=source_subject_ids,
@@ -106,7 +114,7 @@ def run_counter_pipeline(
             "tx2gene_path": str(tx2gene),
             "sample_ids": [assay_spec.specimen_id],
             "feature_id_system_inferred": False,
-            "feature_annotation_available": True,
+            "feature_annotation_available": has_annotation,
         },
         overlay={},
     )
@@ -133,7 +141,7 @@ def run_counter_pipeline(
         started_at=started_at,
         finished_at=finished_at,
         status="completed",
-        log_path=str((logs_dir / "counter.log").resolve()),
+        log_path=str((logs_dir / "run.log").resolve()),
     )
     
     return matrix_spec, run_spec

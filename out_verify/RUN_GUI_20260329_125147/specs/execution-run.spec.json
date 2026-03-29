@@ -1,0 +1,19 @@
+{
+  "schema_name": "ExecutionRunSpec",
+  "schema_version": "0.2.0",
+  "run_id": "RUN_GUI_20260329_125147",
+  "app_name": "iwa_rnaseq_counter_gui_backend",
+  "app_version": "UNKNOWN",
+  "input_refs": [],
+  "output_refs": [],
+  "parameters": {
+    "config": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/run_config.json",
+    "sample_sheet": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/inputs/sample_sheet.csv",
+    "started_at": "2026-03-29T12:51:47.869844+09:00"
+  },
+  "execution_backend": "local",
+  "started_at": "2026-03-29T12:51:47.884142+09:00",
+  "finished_at": "2026-03-29T12:52:46.751979+09:00",
+  "status": "completed",
+  "log_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/out_verify/RUN_GUI_20260329_125147/logs/job.log"
+}

@@ -309,6 +309,21 @@ def run_app() -> None:
                 sample_sheet_path = (dirs.inputs / "sample_sheet.csv").resolve()
                 backend_df.to_csv(sample_sheet_path, index=False)
                 
+                # Write GUI status for traceability (v0.5.0 requirement)
+                status_df = pd.DataFrame([
+                    {"parameter": "analysis_name", "value": st.session_state.analysis_name},
+                    {"parameter": "input_dir", "value": str(Path(st.session_state.input_dir).resolve())},
+                    {"parameter": "output_dir", "value": str(Path(st.session_state.output_dir).resolve())},
+                    {"parameter": "salmon_index_path", "value": str(Path(st.session_state.salmon_index_path).resolve())},
+                    {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve())},
+                    {"parameter": "strandedness_mode", "value": st.session_state.strandedness_mode},
+                    {"parameter": "threads", "value": st.session_state.threads},
+                    {"parameter": "started_at", "value": started_at_iso},
+                    {"parameter": "job_id", "value": job_id},
+                ])
+                status_path = (dirs.inputs / "gui_input_status.csv").resolve()
+                status_df.to_csv(status_path, index=False)
+                
                 command = [
                     "pixi", "run", "python", str(Path(__file__).parent.resolve() / "cli.py"),
                     "run-gui-backend",

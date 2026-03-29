@@ -1,5 +1,5 @@
 sample_id,r1_path,r2_path,layout,group,condition,replicate,batch,pair_id,display_name,color,exclude,note
-SP001,/data/fastq/SP001_R1.fastq.gz,/data/fastq/SP001_R2.fastq.gz,,case,baseline,1,batch1,,Case 1,#1f77b4,false,
+SP001,/data/fastq/SP001_R1.fastq.gz,/data/fastq/SP001_R2.fastq.gz,paired,case,baseline,1,batch1,,Case 1,#1f77b4,false,
 SP002,/data/fastq/SP002_R1.fastq.gz,/data/fastq/SP002_R2.fastq.gz,paired,case,baseline,2,batch1,,Case 2,#1f77b4,false,
 SP003,/data/fastq/SP003_R1.fastq.gz,/data/fastq/SP003_R2.fastq.gz,paired,control,baseline,1,batch1,,Control 1,#ff7f0e,false,
 SP004,/data/fastq/SP004_R1.fastq.gz,,single,control,baseline,2,batch2,,Control 2,#ff7f0e,false,single-end example
