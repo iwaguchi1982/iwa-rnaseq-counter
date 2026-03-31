@@ -2,13 +2,7 @@ import logging
 import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
-
-# [v0.6.0 C-01]
-# runner が Salmon 実装を直接 import している。
-# これにより assay 実行層が legacy.salmon_runner に密結合している。
-# v0.6.0 では runner -> quantifier resolver / adapter 経由へ変更し、
-# runner から特定 backend 実装 import を消す方針。
-from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
+from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import load_tx2gene_map, build_transcript_quant_table, aggregate_transcript_to_gene
 from ..models.assay import AssaySpec
 from ..models.matrix import MatrixSpec
@@ -63,23 +57,17 @@ def run_counter_pipeline(
     if not salmon_index:
         raise ValueError("salmon_index is required in AssaySpec.reference_resources")
 
-    # [v0.6.0 C-02]
-    # runner 自身が quantifier='salmon' 以外を拒否している。
-    # v0.6.0 では runner が backend 名で直接分岐せず、
-    # resolver / registry に quantifier 実装解決を委譲する形へ寄せる。
-    if quantifier != "salmon":
-        raise NotImplementedError(f"Only quantifier='salmon' is supported now, got: {quantifier!r}")
-    # [v0.6.0 C-01]
-    # runner が Salmon 実装関数 run_salmon_quant() を直接呼んでいる。
-    # ここは将来的に quantifier adapter の共通 API
-    # 例: quantifier_impl.run_quant(...)
-    # へ置き換え、runner は backend 差分を知らない層にしたい。
-    run_result = run_salmon_quant(
+    quant = get_quantifier(quantifier)
+
+    run_result = quant.run_quant(
         sample_df=sample_df,
-        salmon_index_path=salmon_index,
-        run_output_dir=str(outdir),
-        strandedness_mode=assay_spec.strandedness or "Auto-detect",
+        run_output_dir=outdir,
         threads=threads,
+        strandedness_mode=assay_spec.strandedness or "Auto-detect",
+        reference_config={
+            "quantifier_index": salmon_index,
+            "tx2gene_path": tx2gene,
+        },
     )
 
     outputs = run_result["outputs"]
