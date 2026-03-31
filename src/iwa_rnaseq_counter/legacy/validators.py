@@ -223,6 +223,8 @@ def validate_fastq_detected(sample_df: pd.DataFrame | None) -> dict:
     return _valid()
 
 
+# [v0.6.0 C-03 / C-04 / C-08]
+# run condition 集約 validator の引数名・内部 check 名が Salmon 固有。
 # ここは app.py と CLI/UI 契約の境界にいるため影響範囲が大きい。
 # v0.6.0 では
 # - 引数名の抽象化

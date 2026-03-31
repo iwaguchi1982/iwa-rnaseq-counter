@@ -141,7 +141,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         run_output_dir=run_dir
     )
     
-    # Step 3: eature_annotation.tsv を準備する (v0.5.0 Contract)
+    # Step 3: feature_annotation.tsv を準備する (v0.5.0 Contract)
     from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
     annotation_out = get_standard_annotation_path(run_dir)
     has_annotation = prepare_feature_annotation(tx2gene_path, annotation_out)
