@@ -3,7 +3,11 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone
 import logging
-
+# [v0.6.0 C-01]
+# GUI backend が Salmon 実装を直接 import している。
+# これにより GUI backend 層が legacy.salmon_runner に密結合している。
+# v0.6.0 では gui_backend -> quantifier resolver / adapter 経由へ変更し、
+# この層から特定 backend 実装 import を消したい。
 from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
 from iwa_rnaseq_counter.legacy.gene_aggregator import build_transcript_quant_table, aggregate_transcript_to_gene, load_tx2gene_map, save_quant_tables
 from iwa_rnaseq_counter.legacy.run_artifacts import save_dataset_manifest
@@ -13,11 +17,15 @@ logger = logging.getLogger(__name__)
 
 def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.DataFrame, started_at_iso: str):
     """
-    Executes the exact pipeline that the GUI used to run synchronously.
-    Outputs are written to run_dir.
+    GUIが同期実行に使用していたパイプラインと全く同じものを実行します。
+    出力はrun_dirに書き込まれます。
     """
     start_time = time.time()
     
+    # [v0.6.0 C-03 / C-08]
+    # GUI backend が config_data から salmon_index_path / tx2gene_path を直接読んでいる。
+    # 入口契約そのものが Salmon 前提になっているため、
+    # v0.6.0 では backend 非依存な reference/index/resource 契約へ寄せたい。
     salmon_index_path = config_data.get("salmon_index_path")
     tx2gene_path = config_data.get("tx2gene_path")
     strandedness_mode = config_data.get("strandedness_mode", "Auto-detect")
@@ -25,6 +33,12 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     analysis_name = config_data.get("analysis_name", "GUI_Run")
     
     logger.info("Step 1: Running Salmon for all samples...")
+
+    # [v0.6.0 C-01]
+    # GUI backend が Salmon 実装関数 run_salmon_quant() を直接呼んでいる。
+    # ここは将来的に quantifier adapter の共通 API
+    # 例: quantifier_impl.run_quant(...)
+    # へ置き換え、GUI backend は backend 差分を知らない層にしたい。
     run_result = run_salmon_quant(
         sample_df=sample_df,
         salmon_index_path=salmon_index_path,
@@ -99,6 +113,11 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "save_path": str(run_dir),
         "quantifier": "salmon",
         "quantifier_version": "1.10.1",
+        # [v0.6.0 C-05 / C-09]
+        # run_summary に quantifier 名と version が固定値で埋め込まれている。
+        # GUI backend が "salmon" / "1.10.1" を直書きしており、
+        # backend 情報の出所が抽象層ではなく GUI backend 自身になっている。
+        # v0.6.0 では backend 実装から受け取る metadata に寄せたい。
         "salmon_index_path": salmon_index_path,
         "tx2gene_path": tx2gene_path,
         "strandedness": config_data.get("strandedness_prediction"),
@@ -122,7 +141,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         run_output_dir=run_dir
     )
     
-    # Step 3: Prepare feature_annotation.tsv (v0.5.0 Contract)
+    # Step 3: eature_annotation.tsv を準備する (v0.5.0 Contract)
     from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
     annotation_out = get_standard_annotation_path(run_dir)
     has_annotation = prepare_feature_annotation(tx2gene_path, annotation_out)
@@ -140,6 +159,10 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "run_name": analysis_name,
         "analysis_name": analysis_name,
         "input_source": input_source,
+        # [v0.6.0 C-05 / C-09]
+        # dataset manifest にも quantifier 名と version が固定値で埋め込まれている。
+        # backend 差分を manifest writer / adapter でなく GUI backend 本体が握っている状態。
+        # v0.6.0 では backend 由来 metadata の注入点を整理したい。
         "quantifier": "salmon",
         "quantifier_version": "1.10.1",
         "sample_count_total": len(sample_ids_all),
@@ -170,6 +193,10 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     save_dataset_manifest(run_dir, manifest_data)
     
     try:
+        # [v0.6.0 C-09]
+        # GUI adapter spec 生成へ feature_annotation_path / availability を渡している。
+        # ここ自体は v0.5.0 契約上妥当だが、backend 情報の責務分離後に
+        # gui_backend -> spec writer の入力契約を見直す余地あり。
         write_gui_supporting_inputs(
             run_dir=run_dir,
             run_summary=run_summary,

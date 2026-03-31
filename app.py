@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 
-# Add local src and root src to sys.path
+# ローカルのsrcとルートのsrcをsys.pathに追加
 sys.path.append(str(Path(__file__).parent / "src"))
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
@@ -22,6 +22,11 @@ from iwa_rnaseq_counter.legacy.sample_parser import (
     parse_sample_sheet,
 )
 from iwa_rnaseq_counter.legacy.strandedness import infer_strandedness
+# [v0.6.0 C-04]
+# validation 層が validate_salmon_index / validate_tx2gene_file という
+# Salmon 前提の関数名・契約を UI へ直接露出している。
+# v0.6.0 では app.py が backend 固有 validator 名を直接知らず、
+# reference/index validator の抽象名へ寄せたい。
 from iwa_rnaseq_counter.legacy.validators import (
     validate_analysis_name,
     validate_input_directory,
@@ -54,7 +59,7 @@ def init_session_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
             
-    # Migration: If existing session has "results", force it to "output" for v0.4.2+
+    # Migration: 既存のセッションに「結果」がある場合は、v0.4.2以降では強制的に「出力」にします
     if st.session_state.get("output_dir") == "results":
         st.session_state.output_dir = "output"
     if st.session_state.get("runs_root") == "results":
@@ -67,8 +72,9 @@ def init_session_state() -> None:
 def run_app() -> None:
     st.set_page_config(page_title="iwa-rnaseq-counter", layout="wide")
     render_app_header()
-
+    #
     # 1. Runs Root & Job Discovery
+    #
     with st.sidebar:
         st.markdown("### 📂 Data Location")
         root_default = st.session_state.get("runs_root", "output")
@@ -90,18 +96,19 @@ def run_app() -> None:
         recent_runs = []
     else:
         recent_runs = discover_runs(runs_root_path)
-    
+    #
     # 2. Stable Session Recovery / Selection
-    #真のソースは Runs Root 配下の run artifact。
+    # 真のソースは Runs Root 配下の run artifact
+    #
     if st.session_state.needs_initial_recovery:
-        # First load recovery or root change recovery
+        # 初回ロード回復またはルート変更回復
         suggestion = pick_active_run(recent_runs, None)
         st.session_state.selected_job_id = suggestion.run_dir.name if suggestion else None
         st.session_state.needs_initial_recovery = False
         
     elif st.session_state.selected_job_id is not None:
-        # User is already in Job View Mode.
-        # Just resolve the current selection (it might have been updated by background processes)
+        # ユーザーは既にジョブビューモードになっています。
+        # 現在の選択内容を解決してください（バックグラウンドプロセスによって更新されている可能性があります）。
         hint_id = st.session_state.selected_job_id
         hint_path = str(runs_root_path / hint_id)
         
@@ -115,11 +122,12 @@ def run_app() -> None:
             # 候補が取れないときは、自動的に New Analysis に落とす
             st.session_state.selected_job_id = None
     else:
-        # Explicit None (New Analysis) -> Stay in New Analysis Mode
+        # Explicit None (New Analysis) -> 新規分析モードを維持する
         pass
-
+    #
     # 3. View Mode Management
     # Display transient notice if set
+    #
     if st.session_state.ui_notice:
         st.toast(st.session_state.ui_notice, icon="✅")
         st.session_state.ui_notice = None
@@ -152,8 +160,9 @@ def run_app() -> None:
             st.session_state.ui_notice = f"Job {selected_id} をロードしました"
             st.rerun()
     
-    else: # view_mode == "run"
-        # Shared Validation results (initially empty)
+    else: 
+        # view_mode == "run"
+        # 共有検証結果（初期値は空）
         name_validation = input_validation = output_validation = index_validation = tx2gene_validation = run_validation = {}
 
         # Run/Input Header
@@ -173,8 +182,9 @@ def run_app() -> None:
                 st.session_state.ui_notice = "新規解析モードに切り替えました"
                 st.session_state.view_mode = "run"
                 st.rerun()
-
+        #
         # 4. Shared Maintainance
+        #
         with st.sidebar:
             st.markdown("---")
             st.markdown("### メンテナンス")
@@ -182,8 +192,9 @@ def run_app() -> None:
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
-
+        #
         # 5. Main View Mode Selection
+        #
         if st.session_state.selected_job_id is None:
             # ==========================================
             # INPUT MODE
@@ -224,7 +235,7 @@ def run_app() -> None:
                 except Exception as e:
                     st.error(f"CSV 読み込みエラー: {e}")
 
-            # Render Sections
+            # render Sections
             render_fastq_section(st.session_state.get("fastq_df"))
 
             st.session_state.sample_df = render_sample_section(
@@ -232,19 +243,37 @@ def run_app() -> None:
             )
 
             reference_values = render_reference_section()
+
+            # [v0.6.0 C-03 / C-08]
+            # session_state が salmon_index_path / tx2gene_path を直接保持している。
+            # つまり GUI の入力契約自体が Salmon 前提になっている。
+            # v0.6.0 では backend 非依存な reference/index/resource 名へ寄せる
             st.session_state.salmon_index_path = reference_values["salmon_index_path"]
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
 
+            # [v0.6.0 C-04]
+            # UI から取得した参照情報を Salmon 専用 validator で直接検証している。
+            # validator の責務分離前に名称だけ変えると危険なので、
+            # まずは app.py -> generic validator facade の配線を作るのが安全。
             index_validation = validate_salmon_index(st.session_state.salmon_index_path)
             tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
             if st.session_state.get("last_salmon_index_path") != st.session_state.salmon_index_path:
+
+                # [v0.6.0 C-03]
+                # last_salmon_index_path という session key 名自体が Salmon 固有。
+                # 依存除去の際は状態キー名の移行も必要。
                 st.session_state.strandedness_prediction = None
                 st.session_state.last_salmon_index_path = st.session_state.salmon_index_path
 
             if reference_values.get("estimate_strandedness"):
                 if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
                     with st.spinner("Strandedness を推定中..."):
+
+                        # [v0.6.0 C-03 / C-08]
+                        # strandedness 推定が salmon_index_path を直接要求している。
+                        # ここは将来的に backend 別推定へ広げるか、
+                        # まずは Salmon 専用機能として adapter に隔離する必要あり。
                         strandedness_result = infer_strandedness(
                             sample_df=st.session_state.sample_df,
                             input_dir=st.session_state.input_dir,
@@ -272,14 +301,20 @@ def run_app() -> None:
             st.session_state.strandedness_mode = run_values["strandedness_mode"]
             st.session_state.threads = run_values["threads"]
 
+            # ---
             # Handle Run Execution
+            # ---
             if run_values["run_requested"]:
                 started_at_iso = datetime.now(timezone.utc).astimezone().isoformat()
                 job_id = f"RUN_GUI_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 
-                # Use current output_dir as root for the new job
+                # 現在の出力ディレクトリを新しいジョブのルートとして使用
                 dirs = setup_run_directory(Path(st.session_state.output_dir), job_id)
                 
+                # [v0.6.0 C-03 / C-08 / C-09]
+                # run_config.json の内容が salmon_index_path / tx2gene_path を前提に固定されている。
+                # app.py が GUI 入力を backend 固有 config へ直接落としているため、
+                # v0.6.0 では app.py -> generic run request config -> backend adapterの段階を分けたい。
                 config_data = {
                     "analysis_name": st.session_state.analysis_name,
                     "input_dir": str(Path(st.session_state.input_dir).resolve()),
@@ -309,7 +344,11 @@ def run_app() -> None:
                 sample_sheet_path = (dirs.inputs / "sample_sheet.csv").resolve()
                 backend_df.to_csv(sample_sheet_path, index=False)
                 
-                # Write GUI status for traceability (v0.5.0 requirement)
+                # 追跡可能性のためにGUIステータスを書き込み (v0.5.0 requirement)
+                # [v0.6.0 C-03]
+                # gui_input_status.csv にも salmon_index_path / tx2gene_path を直接書いている。
+                # トレーサビリティ要件自体は維持しつつ、
+                # backend 固有語彙の露出をどの層まで許容するか整理が必要。
                 status_df = pd.DataFrame([
                     {"parameter": "analysis_name", "value": st.session_state.analysis_name},
                     {"parameter": "input_dir", "value": str(Path(st.session_state.input_dir).resolve())},
@@ -324,6 +363,10 @@ def run_app() -> None:
                 status_path = (dirs.inputs / "gui_input_status.csv").resolve()
                 status_df.to_csv(status_path, index=False)
                 
+                # [v0.6.0 C-03 / C-09]
+                # app.py は最終的に run-gui-backend へ config file を渡すだけだが、
+                # その config schema がすでに Salmon 固有である点が本質。
+                # ここは CLI コマンド自体より、前段の config 契約を抽象化するのが先。
                 command = [
                     "pixi", "run", "python", str(Path(__file__).parent.resolve() / "cli.py"),
                     "run-gui-backend",

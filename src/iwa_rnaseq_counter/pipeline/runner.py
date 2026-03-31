@@ -3,6 +3,11 @@ import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 
+# [v0.6.0 C-01]
+# runner が Salmon 実装を直接 import している。
+# これにより assay 実行層が legacy.salmon_runner に密結合している。
+# v0.6.0 では runner -> quantifier resolver / adapter 経由へ変更し、
+# runner から特定 backend 実装 import を消す方針。
 from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
 from iwa_rnaseq_counter.legacy.gene_aggregator import load_tx2gene_map, build_transcript_quant_table, aggregate_transcript_to_gene
 from ..models.assay import AssaySpec
@@ -48,15 +53,27 @@ def run_counter_pipeline(
     salmon_index = None
     tx2gene = None
     if assay_spec.reference_resources:
+        # [v0.6.0 C-08]
+        # 現状は reference_resources から salmon_index / tx2gene を直接取り出しており、
+        # reference 契約が Salmon 前提の命名になっている。
+        # v0.6.0 では backend 非依存な reference/index/resource 参照へ寄せたい。
         salmon_index = assay_spec.reference_resources.quantifier_index
         tx2gene = assay_spec.reference_resources.tx2gene_path
 
     if not salmon_index:
         raise ValueError("salmon_index is required in AssaySpec.reference_resources")
 
+    # [v0.6.0 C-02]
+    # runner 自身が quantifier='salmon' 以外を拒否している。
+    # v0.6.0 では runner が backend 名で直接分岐せず、
+    # resolver / registry に quantifier 実装解決を委譲する形へ寄せる。
     if quantifier != "salmon":
         raise NotImplementedError(f"Only quantifier='salmon' is supported now, got: {quantifier!r}")
-
+    # [v0.6.0 C-01]
+    # runner が Salmon 実装関数 run_salmon_quant() を直接呼んでいる。
+    # ここは将来的に quantifier adapter の共通 API
+    # 例: quantifier_impl.run_quant(...)
+    # へ置き換え、runner は backend 差分を知らない層にしたい。
     run_result = run_salmon_quant(
         sample_df=sample_df,
         salmon_index_path=salmon_index,
@@ -110,6 +127,11 @@ def run_counter_pipeline(
             "producer_app": "iwa_rnaseq_counter",
             "producer_version": "0.3.5",
             "quantifier": quantifier,
+            # [v0.6.0 C-09]
+            # backend 情報が metadata に散発的に入っている。
+            # quantifier 名や index 参照は正式な backend metadata 領域へ整理したい。
+            # 特に "salmon_index" というキー名は backend 固有なので、
+            # v0.6.0 で汎化候補。
             "salmon_index": str(salmon_index),
             "tx2gene_path": str(tx2gene),
             "sample_ids": [assay_spec.specimen_id],
@@ -134,6 +156,10 @@ def run_counter_pipeline(
             "threads": threads,
             "strandedness_mode": assay_spec.strandedness or "Auto-detect",
             "profile": profile,
+            # [v0.6.0 C-09]
+            # 実行 backend / quantifier 情報が parameters にも流入している。
+            # ExecutionRunSpec 側で backend / quantifier の正式格納位置を整理し、
+            # parameters は run-time option に寄せるか再編したい。
             "salmon_index": str(salmon_index),
             "tx2gene_path": str(tx2gene),
         },

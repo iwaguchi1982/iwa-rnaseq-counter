@@ -14,21 +14,37 @@ class MatrixSpec:
     feature_id_system: str
     sample_axis: str
     matrix_path: str
+
+    # [v0.6.0 C-08 / C-09]
+    # このフィールド自体は backend 非依存で維持したい。
+    # ただし呼び出し側で tx2gene_path や backend 固有 annotation 資源を
+    # 代入しないことを今後も明確に守る必要がある。
+    # feature_annotation_path は reporter 表示用 annotation の参照に限定する。
     feature_annotation_path: Optional[str] = None
+
     """
-    Reference to the reporter-ready annotation file (v0.5.0 Contract).
-    - If valid annotations exist: Actual absolute or relative path to feature_annotation.tsv.
-    - If no annotations exist: null (None) or empty string "".
-    - [CRITICAL]: NEVER use tx2gene path as a substitute for this field.
+    レポーター対応アノテーションファイル（v0.5.0契約）への参照。
+    - 有効なアノテーションが存在する場合：feature_annotation.tsvへの実際の絶対パスまたは相対パス。
+    - アノテーションが存在しない場合：null（None）または空文字列 ""。
+    - [重要]：このフィールドの代わりにtx2geneパスを使用しない。
     """
     source_assay_ids: List[str] = field(default_factory=list)
     source_specimen_ids: List[str] = field(default_factory=list)
     source_subject_ids: List[str] = field(default_factory=list)
+
+    # [v0.6.0 C-09]
+    # metadata は拡張余地として必要だが、
+    # salmon_index / tx2gene_path / backend 固有 key を無秩序に積む場所にはしたくない。
+    # v0.6.0 では「共通 metadata」と「backend 由来 metadata」の整理方針を決めたい。
     metadata: Dict[str, Any] = field(default_factory=dict)
     overlay: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MatrixSpec":
+
+        # [v0.6.0 C-09]
+        # ここは受け皿としては汎用のままでよい。
+        # 重要なのは upstream writer が backend 固有 key をどう入れるか。
         return cls(
             schema_name=data.get("$schema_name", ""),
             schema_version=data.get("$schema_version", ""),
@@ -50,6 +66,9 @@ class MatrixSpec:
         )
 
     def to_dict(self) -> Dict[str, Any]:
+        # [v0.6.0 C-09]
+        # serializer 自体は汎用のままでよい。
+        # ここで特定 backend の都合を吸収し始めるとモデル層が汚れるので注意。
         d = asdict(self)
         d["$schema_name"] = d.pop("schema_name")
         d["$schema_version"] = d.pop("schema_version")

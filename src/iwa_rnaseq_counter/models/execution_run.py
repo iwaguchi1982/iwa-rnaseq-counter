@@ -17,10 +17,18 @@ class ExecutionRunSpec:
 
     status: str = "pending"
     log_path: str = ""
+
+    # [v0.6.0 C-09]
+    # metadata は将来の拡張先として有力。
+    # ただし parameters の肥大化対策として使う場合でも、
+    # backend 固有情報の整理ルールを決めてから移すべき。
     metadata: Dict[str, Any] = field(default_factory=dict)
     overlay: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        # [v0.6.0 C-09]
+        # serializer は単純維持でよい。
+        # backend 差分吸収をここで始めるのではなく、writer / builder 側で整理する
         d = asdict(self)
         d["$schema_name"] = d.pop("schema_name")
         d["$schema_version"] = d.pop("schema_version")

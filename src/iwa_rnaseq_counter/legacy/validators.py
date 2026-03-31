@@ -59,7 +59,13 @@ def validate_output_directory(output_dir: str) -> dict:
         
     return _valid()
 
-
+# [v0.6.0 C-04 / C-08]
+# validator 名と入力契約が Salmon 固有になっている。
+# さらに判定ロジックも "Salmon index directory" の構造知識を直接持っている。
+# v0.6.0 では
+# - app.py から見える表面名は backend 非依存へ寄せる
+# - 実体の判定ロジックは backend adapter / reference validator 側へ隔離
+# を検討したい。
 def validate_salmon_index(salmon_index_path: str) -> dict:
     if not salmon_index_path:
         return _invalid("Salmon index が指定されていません。")
@@ -67,12 +73,18 @@ def validate_salmon_index(salmon_index_path: str) -> dict:
     if not path.exists() or not path.is_dir():
         return _invalid("Salmon index パスが有効ではありません。")
     
-    # Salmon インデックスディレクトリには通常 version.json または versionInfo.json が含まれる
+    # [v0.6.0 C-08]
+    # ここは単なる名前の問題ではなく、Salmon index 特有の directory structure を前提にしている。
+    # version.json / versionInfo.json / ref_sigs.json を見ているため、
+    # reference/index 抽象化の際はロジックの移設先を先に決める必要がある。
     version_files = ["version.json", "versionInfo.json", "ref_sigs.json"]
     if not any((path / f).exists() for f in version_files):
         return _invalid(f"Salmon インデックスとして正しくないか、不完全なディレクトリです: {path}")
     
-    # 構造上の必須ファイル (最低限)
+    # [v0.6.0 C-08]
+    # pos.bin / seq.bin の存在確認も Salmon 固有。
+    # validator facade の名前変更だけで済ませず、
+    # backend ごとの index completeness check に落とす必要あり。
     if not (path / "pos.bin").exists() and not (path / "seq.bin").exists():
          return _invalid("Salmon インデックス内の必須ファイル (pos.bin 等) が見つかりません。")
     
@@ -211,6 +223,12 @@ def validate_fastq_detected(sample_df: pd.DataFrame | None) -> dict:
     return _valid()
 
 
+# ここは app.py と CLI/UI 契約の境界にいるため影響範囲が大きい。
+# v0.6.0 では
+# - 引数名の抽象化
+# - checks 辞書キーの backend 非依存化
+# - backend 固有判定の委譲先整理
+# を段階的に進める必要がある。
 def validate_run_conditions(
     input_dir: str,
     output_dir: str,
@@ -223,10 +241,18 @@ def validate_run_conditions(
     checks = {
         "fastq_detected": validate_fastq_detected(sample_df),
         "sample_structure": validate_sample_structure(sample_df),
+        # [v0.6.0 C-04 / C-08]
+        # check key も validator 呼び出し先も Salmon 固有。
+        # UI 表示や validation details の表示項目に影響する可能性があるため、
+        # 置換時は app.py 側の参照も合わせて確認する。
         "salmon_index": validate_salmon_index(salmon_index_path),
         "tx2gene": validate_tx2gene_file(tx2gene_path),
         "strandedness": validate_strandedness_selection(strandedness_mode, strandedness_result),
         "output_dir": validate_output_directory(output_dir),
+        # [v0.6.0 C-04]
+        # 実行前チェックに salmon binary の存在確認が直結している。
+        # backend 抽象化後は validate_quantifier_binary() 相当の facade か、
+        # backend 実装側の preflight check へ寄せたい。
         "salmon_binary": validate_salmon_binary(),
     }
     
@@ -249,7 +275,10 @@ def validate_run_conditions(
         "checks": {name: result.get("is_valid", False) for name, result in checks.items()},
     }
 
-
+# [v0.6.0 C-04]
+# salmon コマンド存在確認を validator 層が直接知っている。
+# これは実行 backend の preflight に近い責務なので、
+# v0.6.0 では facade 化または backend 実装側への委譲候補。
 def validate_salmon_binary() -> dict:
     if shutil.which("salmon") is None:
         return _invalid("salmon コマンドが見つかりません。PATH を確認してください。")

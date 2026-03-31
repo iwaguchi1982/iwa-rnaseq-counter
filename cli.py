@@ -42,6 +42,11 @@ def main():
     p_run.add_argument("--outdir", required=True, type=Path)
     p_run.add_argument("--run-id", type=str)
     p_run.add_argument("--profile", type=str, default="local")
+   
+    # [v0.6.0 C-02]
+    # CLI の表面で quantifier の既定値が salmon に固定されている。
+    # v0.6.0 では salmon を唯一実装のままでも、
+    # 入口としては「最初の backend 実装例」に寄せたい。
     p_run.add_argument("--quantifier", type=str, default="salmon")
     p_run.add_argument("--threads", type=int, default=4)
     p_run.add_argument("--dry-run", action="store_true")
@@ -49,12 +54,22 @@ def main():
 
     p_batch = subparsers.add_parser("run-batch", help="Run multiple AssaySpecs from a sample sheet")
     p_batch.add_argument("--sample-sheet", required=True, type=Path)
+    
+    # [v0.6.0 C-03 / C-08]
+    # CLI 引数名そのものが --salmon-index であり、
+    # reference/index 入力契約が Salmon 固有語彙のまま露出している。
+    # v0.6.0 では表面名を backend 非依存に寄せるか、
+    # 少なくとも CLI facade で抽象名 -> backend 固有名へ変換したい。
     p_batch.add_argument("--salmon-index", required=True, type=Path)
     p_batch.add_argument("--tx2gene", required=True, type=Path)
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
     p_batch.add_argument("--outdir", required=True, type=Path)
     p_batch.add_argument("--run-id", type=str)
     p_batch.add_argument("--profile", type=str, default="local")
+   
+    # [v0.6.0 C-02]
+    # run-batch 側も quantifier 既定値が salmon 固定。
+    # 実装の現状としては妥当でも、CLI 契約としては v0.6.0 で整理対象。
     p_batch.add_argument("--quantifier", type=str, default="salmon")
     p_batch.add_argument("--threads", type=int, default=4)
     p_batch.add_argument("--dry-run", action="store_true")
@@ -67,7 +82,11 @@ def main():
     p_merge.add_argument("--matrix-id", required=True, type=str)
     p_merge.add_argument("--run-id", type=str)
     p_merge.add_argument("--log-level", type=str, default="INFO")
-
+   
+    # [v0.6.0 C-03 / C-09]
+    # run-gui-backend 自体は抽象的な名前だが、
+    # 実際には --config の中身が Salmon 固有契約である点が本質。
+    # CLI 名よりも config schema の抽象化が優先。
     p_gui = subparsers.add_parser("run-gui-backend", help="Execute the monolithic GUI pipeline via CLI for job running")
     p_gui.add_argument("--config", required=True, type=Path)
     p_gui.add_argument("--sample-sheet", required=True, type=Path)
@@ -92,6 +111,10 @@ def main():
             threads=args.threads,
             run_id=args.run_id,
             profile=args.profile,
+            # [v0.6.0 C-09]
+            # CLI から runner へ quantifier 名をそのまま流している。
+            # 将来的にはここで registry / resolver 解決を挟むか、
+            # 少なくとも runner 側の責務と CLI 側の責務を分けたい。
             quantifier=args.quantifier,
         )
 
@@ -106,6 +129,9 @@ def main():
         from iwa_rnaseq_counter.io.read_sample_sheet import read_sample_sheet
         
         try:
+            # [v0.6.0 C-03 / C-08]
+            # read_sample_sheet の入力契約も salmon_index_path を直接要求している。
+            # ここは CLI 表面だけでなく内部 I/O 契約にも Salmon 語彙が残っている証拠。
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
                 salmon_index_path=str(args.salmon_index),
@@ -171,6 +197,10 @@ def main():
         try:
             with open(args.config, "r") as f:
                 config_data = json.load(f)
+            # [v0.6.0 C-03 / C-09]
+            # run-gui-backend は config JSON を受け取るだけに見えるが、
+            # その config_data の中身が現状 salmon_index_path / tx2gene_path 前提。
+            # つまり CLI の抽象度より config schema の抽象度の方が低い状態。
             import ast
             def parse_list(x):
                 try:
