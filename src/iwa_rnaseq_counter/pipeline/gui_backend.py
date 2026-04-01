@@ -27,6 +27,10 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     threads = config_data.get("threads", 4)
     analysis_name = config_data.get("analysis_name", "GUI_Run")
     quantifier_name = config_data.get("quantifier", "salmon")
+    quantifier_version = config_data.get(
+        "quantifier_version",
+        "1.10.1" if quantifier_name == "salmon" else "unknown",
+    )
     
     logger.info(f"Step 1: Running {quantifier_name} for all samples...")
 
@@ -112,8 +116,8 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "elapsed_seconds": time.time() - start_time,
         "outputs": outputs,
         "save_path": str(run_dir),
-        "quantifier": "salmon",
-        "quantifier_version": "1.10.1",
+        "quantifier": quantifier_name,
+        "quantifier_version": quantifier_version,
         # [v0.6.0 C-05 / C-09]
         # run_summary に quantifier 名と version が固定値で埋め込まれている。
         # GUI backend が "salmon" / "1.10.1" を直書きしており、
@@ -164,8 +168,8 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         # dataset manifest にも quantifier 名と version が固定値で埋め込まれている。
         # backend 差分を manifest writer / adapter でなく GUI backend 本体が握っている状態。
         # v0.6.0 では backend 由来 metadata の注入点を整理したい。
-        "quantifier": "salmon",
-        "quantifier_version": "1.10.1",
+        "quantifier": quantifier_name,
+        "quantifier_version": quantifier_version,
         "sample_count_total": len(sample_ids_all),
         "sample_count_success": len(sample_ids_success),
         "sample_count_failed": len(sample_ids_failed),
