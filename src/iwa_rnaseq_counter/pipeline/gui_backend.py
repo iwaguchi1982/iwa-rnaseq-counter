@@ -3,12 +3,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone
 import logging
-# [v0.6.0 C-01]
-# GUI backend が Salmon 実装を直接 import している。
-# これにより GUI backend 層が legacy.salmon_runner に密結合している。
-# v0.6.0 では gui_backend -> quantifier resolver / adapter 経由へ変更し、
-# この層から特定 backend 実装 import を消したい。
-from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
+from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import build_transcript_quant_table, aggregate_transcript_to_gene, load_tx2gene_map, save_quant_tables
 from iwa_rnaseq_counter.legacy.run_artifacts import save_dataset_manifest
 from iwa_rnaseq_counter.builders.gui_artifact_export import write_gui_supporting_inputs
@@ -31,20 +26,26 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     strandedness_mode = config_data.get("strandedness_mode", "Auto-detect")
     threads = config_data.get("threads", 4)
     analysis_name = config_data.get("analysis_name", "GUI_Run")
+    quantifier_name = config_data.get("quantifier", "salmon")
     
-    logger.info("Step 1: Running Salmon for all samples...")
+    logger.info(f"Step 1: Running {quantifier_name} for all samples...")
 
     # [v0.6.0 C-01]
     # GUI backend が Salmon 実装関数 run_salmon_quant() を直接呼んでいる。
     # ここは将来的に quantifier adapter の共通 API
     # 例: quantifier_impl.run_quant(...)
     # へ置き換え、GUI backend は backend 差分を知らない層にしたい。
-    run_result = run_salmon_quant(
+    quant = get_quantifier(quantifier_name)
+
+    run_result = quant.run_quant(
         sample_df=sample_df,
-        salmon_index_path=salmon_index_path,
-        run_output_dir=str(run_dir),
-        strandedness_mode=strandedness_mode,
+        run_output_dir=run_dir,
         threads=threads,
+        strandedness_mode=strandedness_mode,
+        reference_config={
+            "quantifier_index": salmon_index_path,
+            "tx2gene_path": tx2gene_path,
+        },
     )
     
     outputs = run_result["outputs"]
