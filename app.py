@@ -244,6 +244,15 @@ def run_app() -> None:
 
             reference_values = render_reference_section()
 
+            #
+            # 内部だけ quantifier を持っておく
+            #
+            if "quantifier" not in st.session_state:
+                st.session_state.quantifier = "salmon"
+
+            if "quantifier_version" not in st.session_state:
+                st.session_state.quantifier_version = "1.10.1"
+
             # [v0.6.0 C-03 / C-08]
             # session_state が salmon_index_path / tx2gene_path を直接保持している。
             # つまり GUI の入力契約自体が Salmon 前提になっている。
@@ -323,7 +332,11 @@ def run_app() -> None:
                     "tx2gene_path": str(Path(st.session_state.tx2gene_path).resolve()),
                     "strandedness_mode": st.session_state.strandedness_mode,
                     "threads": st.session_state.threads,
-                    "strandedness_prediction": st.session_state.strandedness_prediction
+                    "strandedness_prediction": st.session_state.strandedness_prediction,
+
+                    # v0.6.0 quantifier追加
+                    "quantifier": st.session_state.quantifier,
+                    "quantifier_version": st.session_state.quantifier_version,
                 }
                 config_path = (dirs.inputs / "run_config.json").resolve()
                 with open(config_path, "w") as f:
@@ -357,6 +370,10 @@ def run_app() -> None:
                     {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve())},
                     {"parameter": "strandedness_mode", "value": st.session_state.strandedness_mode},
                     {"parameter": "threads", "value": st.session_state.threads},
+                    # v0.6.0 追加
+                    {"parameter": "quantifier", "value": st.session_state.quantifier},
+                    {"parameter": "quantifier_version", "value": st.session_state.quantifier_version},
+
                     {"parameter": "started_at", "value": started_at_iso},
                     {"parameter": "job_id", "value": job_id},
                 ])
@@ -383,7 +400,10 @@ def run_app() -> None:
                     parameters={
                         "config": str(config_path),
                         "sample_sheet": str(sample_sheet_path),
-                        "started_at": started_at_iso
+                        "started_at": started_at_iso,
+                        # v0.6.0 追加
+                        "quantifier": st.session_state.quantifier,
+                        "quantifier_version": st.session_state.quantifier_version,
                     },
                     resources={"threads": st.session_state.threads}
                 )
