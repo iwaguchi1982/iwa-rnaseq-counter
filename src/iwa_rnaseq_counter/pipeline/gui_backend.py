@@ -119,10 +119,10 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "quantifier": quantifier_name,
         "quantifier_version": quantifier_version,
         # [v0.6.0 C-05 / C-09]
-        # run_summary に quantifier 名と version が固定値で埋め込まれている。
-        # GUI backend が "salmon" / "1.10.1" を直書きしており、
-        # backend 情報の出所が抽象層ではなく GUI backend 自身になっている。
-        # v0.6.0 では backend 実装から受け取る metadata に寄せたい。
+        # run_summary に quantifier 名と version を記録している。
+        # 現在は config_data / 実行文脈ベースで注入しているが、
+        # 最終的には backend 実装または正規化された execution context から
+        # 一貫して受け取る形へ寄せたい。
         "salmon_index_path": salmon_index_path,
         "tx2gene_path": tx2gene_path,
         "strandedness": config_data.get("strandedness_prediction"),
@@ -165,9 +165,9 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "analysis_name": analysis_name,
         "input_source": input_source,
         # [v0.6.0 C-05 / C-09]
-        # dataset manifest にも quantifier 名と version が固定値で埋め込まれている。
-        # backend 差分を manifest writer / adapter でなく GUI backend 本体が握っている状態。
-        # v0.6.0 では backend 由来 metadata の注入点を整理したい。
+        # dataset manifest にも quantifier 名と version を記録している。
+        # 現在は GUI backend で実行文脈から注入しているが、
+        # 将来的には backend metadata の注入点をさらに整理したい。
         "quantifier": quantifier_name,
         "quantifier_version": quantifier_version,
         "sample_count_total": len(sample_ids_all),
