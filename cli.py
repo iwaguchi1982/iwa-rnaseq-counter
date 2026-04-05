@@ -34,9 +34,18 @@ def setup_logging(level: str, logfile: Path | None = None) -> None:
 
 
 def main():
+    # --- CLI entrypoint ---
+    # cli.py は counter の各実行モードに対する統一入口である。
+    # assay 単位実行、batch 実行、analysis matrix 構築、GUI backend 実行を
+    # サブコマンドとして束ねる。
     parser = argparse.ArgumentParser(description="iwa_rnaseq_counter CLI")
+    # --- Subcommand parser construction ---
+    # 利用シーンごとにサブコマンドを分け、
+    # それぞれに必要な入力契約を argparse 上で定義する。
     subparsers = parser.add_subparsers(dest="command", required=True)
-
+    # --- run-assay parser ---
+    # 単一 AssaySpec を受け取り、assay 単位の matrix/spec を出力する入口。
+    # 主に spec 駆動の単体実行や検証用途を想定している。
     p_run = subparsers.add_parser("run-assay", help="Run single AssaySpec and emit assay-level MatrixSpec")
     p_run.add_argument("--assay-spec", required=True, type=Path)
     p_run.add_argument("--outdir", required=True, type=Path)
@@ -44,22 +53,25 @@ def main():
     p_run.add_argument("--profile", type=str, default="local")
    
     # [v0.6.0 C-02]
-    # CLI の表面で quantifier の既定値が salmon に固定されている。
-    # v0.6.0 では salmon を唯一実装のままでも、
-    # 入口としては「最初の backend 実装例」に寄せたい。
+    # CLI は quantifier を受け取れる形になっているが、
+    # 現在の既定値は salmon であり、実装もまずは Salmon backend を基準にしている。
+    # 入口としては将来の複数 backend を見越しつつ、現段階では既定値で運用する。
     p_run.add_argument("--quantifier", type=str, default="salmon")
     p_run.add_argument("--threads", type=int, default=4)
     p_run.add_argument("--dry-run", action="store_true")
     p_run.add_argument("--log-level", type=str, default="INFO")
 
+    # --- run-batch parser ---
+    # sample sheet から複数 AssaySpec 相当を解釈し、
+    # specimen 単位で連続実行する batch 入口である。
     p_batch = subparsers.add_parser("run-batch", help="Run multiple AssaySpecs from a sample sheet")
     p_batch.add_argument("--sample-sheet", required=True, type=Path)
     
     # [v0.6.0 C-03 / C-08]
-    # CLI 引数名そのものが --salmon-index であり、
-    # reference/index 入力契約が Salmon 固有語彙のまま露出している。
-    # v0.6.0 では表面名を backend 非依存に寄せるか、
-    # 少なくとも CLI facade で抽象名 -> backend 固有名へ変換したい。
+    # quantifier 自体は抽象化の入口を持ち始めたが、
+    # reference/index 側の CLI 契約には依然として --salmon-index という
+    # Salmon 固有語彙が残っている。
+    # 今後は CLI 表面名と内部 I/O 契約の両方を段階的に整理したい。
     p_batch.add_argument("--salmon-index", required=True, type=Path)
     p_batch.add_argument("--tx2gene", required=True, type=Path)
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
@@ -68,13 +80,17 @@ def main():
     p_batch.add_argument("--profile", type=str, default="local")
    
     # [v0.6.0 C-02]
-    # run-batch 側も quantifier 既定値が salmon 固定。
-    # 実装の現状としては妥当でも、CLI 契約としては v0.6.0 で整理対象。
+    # run-batch でも quantifier を受け取れるようにしている。
+    # ただし既定値は引き続き salmon であり、
+    # まずは既存実装を壊さずに複数 backend の差し込み口だけを確保している。
     p_batch.add_argument("--quantifier", type=str, default="salmon")
     p_batch.add_argument("--threads", type=int, default=4)
     p_batch.add_argument("--dry-run", action="store_true")
     p_batch.add_argument("--log-level", type=str, default="INFO")
 
+    # --- build-analysis-matrix parser ---
+    # assay 単位の MatrixSpec 群を統合し、
+    # reporter 側で扱いやすい analysis 単位の matrix/spec を構築する入口
     p_merge = subparsers.add_parser("build-analysis-matrix", help="Merge assay-level MatrixSpecs into reporter-ready analysis MatrixSpec")
     p_merge.add_argument("--matrix-spec", required=True, nargs="+", type=Path)
     p_merge.add_argument("--sample-metadata", required=True, type=Path)
@@ -85,8 +101,13 @@ def main():
    
     # [v0.6.0 C-03 / C-09]
     # run-gui-backend 自体は抽象的な名前だが、
-    # 実際には --config の中身が Salmon 固有契約である点が本質。
-    # CLI 名よりも config schema の抽象化が優先。
+    # 実際に受け取る config schema には reference 側の Salmon 語彙がまだ残っている。
+    # 一方で quantifier / quantifier_version もこの経路で受け渡すようになっており、
+    # 今後は config schema 全体の backend 非依存化を進めたい。
+    # --- run-gui-backend parser ---
+    # GUI から生成された run artifact を受け取り、
+    # background job として GUI backend pipeline を再実行する入口。
+    # app.py が作成した config/sample sheet を CLI 経由で backend へ橋渡しする。
     p_gui = subparsers.add_parser("run-gui-backend", help="Execute the monolithic GUI pipeline via CLI for job running")
     p_gui.add_argument("--config", required=True, type=Path)
     p_gui.add_argument("--sample-sheet", required=True, type=Path)
@@ -96,7 +117,13 @@ def main():
 
     args = parser.parse_args()
 
+    # --- run-assay execution path ---
+    # 単一 AssaySpec を読み込み、runner に処理を委譲して
+    # assay-level artifact を出力する実行経路。
     if args.command == "run-assay":
+        # --- Logging setup ---
+        # 各サブコマンドで共通利用する logging 初期化関数。
+        # 標準出力と必要に応じた logfile の両方へ同一フォーマットで出力する。
         setup_logging(args.log_level, args.outdir / "logs" / "counter.log")
         logger = logging.getLogger(__name__)
         assay_spec = read_assay_spec(args.assay_spec)
@@ -112,9 +139,9 @@ def main():
             run_id=args.run_id,
             profile=args.profile,
             # [v0.6.0 C-09]
-            # CLI から runner へ quantifier 名をそのまま流している。
-            # 将来的にはここで registry / resolver 解決を挟むか、
-            # 少なくとも runner 側の責務と CLI 側の責務を分けたい。
+            # CLI は受け取った quantifier 名をそのまま runner に渡す。
+            # backend 解決そのものは runner 側の registry に委譲し、
+            # CLI は入力契約の受け口に留める方針である。
             quantifier=args.quantifier,
         )
 
@@ -123,6 +150,9 @@ def main():
         logger.info("run-assay completed")
 
     elif args.command == "run-batch":
+        # --- run-batch execution path ---
+        # sample sheet を AssaySpec 群へ変換し、
+        # 各 assay を順に runner へ渡して batch 実行する経路。
         setup_logging(args.log_level, args.outdir / "logs" / "batch_counter.log")
         logger = logging.getLogger(__name__)
 
@@ -132,6 +162,10 @@ def main():
             # [v0.6.0 C-03 / C-08]
             # read_sample_sheet の入力契約も salmon_index_path を直接要求している。
             # ここは CLI 表面だけでなく内部 I/O 契約にも Salmon 語彙が残っている証拠。
+            # [v0.6.0 C-03 / C-08]
+            # sample sheet 読み込みの内部契約にも salmon_index_path が残っている。
+            # つまり quantifier 実行の抽象化とは別に、
+            # reference/resource 側の I/O 契約整理がまだ必要である。
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
                 salmon_index_path=str(args.salmon_index),
@@ -146,6 +180,9 @@ def main():
             logger.info(f"Dry run complete. Validated {len(assay_specs)} AssaySpecs.")
             return
 
+        # --- Per-assay batch execution ---
+        # 読み込まれた各 assay を specimen 単位の出力ディレクトリへ実行し、
+        # 成功したものだけを結果一覧へ積み上げる。
         out_matrix_specs = []
         for spec in assay_specs:
             logger.info(f"Processing assay: {spec.assay_id}")
@@ -168,6 +205,9 @@ def main():
         logger.info(f"run-batch completed. Processed {len(out_matrix_specs)} assays successfully.")
 
     elif args.command == "build-analysis-matrix":
+        # --- build-analysis-matrix execution path ---
+        # 複数の assay-level MatrixSpec を読み込み、
+        # analysis 単位の matrix と execution spec を生成する経路。
         setup_logging(args.log_level, args.outdir / "logs" / "build_analysis_matrix.log")
         logger = logging.getLogger(__name__)
 
@@ -187,6 +227,9 @@ def main():
 
 
     elif args.command == "run-gui-backend":
+        # --- GUI backend execution path ---
+        # GUI が事前に保存した config と sample sheet を読み込み、
+        # GUI backend pipeline にそのまま受け渡して background 実行する。
         setup_logging(args.log_level, args.outdir / "logs" / "run.log")
         logger = logging.getLogger(__name__)
         
@@ -195,12 +238,19 @@ def main():
         from iwa_rnaseq_counter.pipeline.gui_backend import run_gui_backend_pipeline
         
         try:
+            # --- GUI config loading ---
+            # app.py が保存した run_config.json を読み込み、
+            # backend 実行に必要な設定を復元する。
             with open(args.config, "r") as f:
                 config_data = json.load(f)
             # [v0.6.0 C-03 / C-09]
-            # run-gui-backend は config JSON を受け取るだけに見えるが、
-            # その config_data の中身が現状 salmon_index_path / tx2gene_path 前提。
-            # つまり CLI の抽象度より config schema の抽象度の方が低い状態。
+            # run-gui-backend は config JSON を受け取り、そのまま gui_backend へ渡す。
+            # 現在の config schema には salmon_index_path / tx2gene_path などの
+            # Salmon 語彙が残る一方、quantifier / quantifier_version もこの経路で通る。
+            # 今後は config schema 自体の backend 非依存化を進めたい。
+            # --- Sample sheet deserialization ---
+            # CSV へ保存された path list 列を Python の list へ戻し、
+            # backend pipeline が扱える形へ整形する。
             import ast
             def parse_list(x):
                 try:
