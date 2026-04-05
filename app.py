@@ -74,7 +74,14 @@ def run_app() -> None:
     render_app_header()
     #
     # 1. Runs Root & Job Discovery
+    # --- Main app orchestration ---
+    # app.py は UI 表示だけでなく、入力収集、検証、run artifact 作成、
+    # background job 起動、結果の再表示までを一括で束ねるエントリーポイントである。
     #
+
+    # --- Runs root and job discovery ---
+    # 過去ジョブの探索起点となる runs root を受け取り、
+    # 既存 run artifact を一覧化するための準備を行う。
     with st.sidebar:
         st.markdown("### 📂 Data Location")
         root_default = st.session_state.get("runs_root", "output")
@@ -89,7 +96,9 @@ def run_app() -> None:
         if st.button("🔄 Refresh Jobs", use_container_width=True):
             st.rerun()
 
-    # Resolve and discover
+    # --- Job discovery from filesystem ---
+    # 指定された runs root を解決し、履歴として参照可能な run directory を収集する。
+    # ここでの一覧が Job History と復元候補のベースになる。
     runs_root_path = resolve_runs_root(st.session_state.runs_root)
     if not runs_root_path.exists():
         st.sidebar.error(f"Root not found: {st.session_state.runs_root}")
@@ -98,7 +107,10 @@ def run_app() -> None:
         recent_runs = discover_runs(runs_root_path)
     #
     # 2. Stable Session Recovery / Selection
-    # 真のソースは Runs Root 配下の run artifact
+    # --- Stable session recovery and selection ---
+    # 現在の session_state と runs root 上の実在ジョブを突き合わせ、
+    # どの job を現在アクティブとして扱うかを安定的に決める。
+    # stale な選択が残っている場合も、ここで安全に補正する。
     #
     if st.session_state.needs_initial_recovery:
         # 初回ロード回復またはルート変更回復
@@ -150,7 +162,9 @@ def run_app() -> None:
         if new_view_mode != st.session_state.view_mode:
             st.session_state.view_mode = new_view_mode
             st.rerun()
-
+    # --- View mode management ---
+    # 画面全体を Run/Input モードと Job History モードに分岐する。
+    # 以降の UI レンダリングはこのモードに応じて切り替える。
     if st.session_state.view_mode == "history":
         selected_id = render_job_history_panel(sort_runs_for_sidebar(recent_runs), st.session_state.selected_job_id)
         if selected_id != st.session_state.selected_job_id:
@@ -194,11 +208,17 @@ def run_app() -> None:
                 st.rerun()
         #
         # 5. Main View Mode Selection
+        # --- Input mode ---
+        # 新規解析の条件入力、検証、artifact 生成、job submission までを担当する。
+        # selected_job_id が無い場合のみ、この入力フローへ入る。
         #
         if st.session_state.selected_job_id is None:
             # ==========================================
             # INPUT MODE
             # ==========================================
+            # --- Analysis basic settings ---
+            # 解析名、入力ディレクトリ、出力ディレクトリなど、
+            # run の基本設定を UI から受け取って session_state に反映する。
             analysis_values = render_analysis_section()
             st.session_state.analysis_name = analysis_values["analysis_name"]
             st.session_state.input_dir = analysis_values["input_dir"]
@@ -208,7 +228,9 @@ def run_app() -> None:
             input_validation = validate_input_directory(st.session_state.input_dir)
             output_validation = validate_output_directory(st.session_state.output_dir)
 
-            # FASTQ Discovery logic
+            # --- FASTQ discovery and sample inference ---
+            # 入力ディレクトリを走査して FASTQ を見つけ、
+            # sample grouping / layout 推定 / lane 推定まで行って sample_df を組み立てる。
             if analysis_values.get("scan_requested") and input_validation["is_valid"]:
                 fastq_files = discover_fastq_files(st.session_state.input_dir)
                 st.session_state.scanned_fastq_files = fastq_files
@@ -226,7 +248,9 @@ def run_app() -> None:
                 st.session_state.fastq_scan_completed = True
                 st.success("FASTQ をスキャンしました。")
 
-            # CSV Load logic
+            # --- Sample sheet loading ---
+            # 既存の sample sheet を読み込み、手動入力の代わりに sample_df を復元する。
+            # FASTQ discovery と排他的ではなく、入力経路の一つとして扱う。
             if analysis_values.get("load_csv_requested") and analysis_values.get("csv_path"):
                 try:
                     csv_df = parse_sample_sheet(analysis_values["csv_path"], st.session_state.input_dir)
@@ -244,9 +268,9 @@ def run_app() -> None:
 
             reference_values = render_reference_section()
 
-            #
-            # 内部だけ quantifier を持っておく
-            #
+            # --- Internal quantifier defaults ---
+            # 現段階では UI から quantifier を選ばせず、内部既定値として保持する。
+            # 将来 UI 選択へ拡張しても、この session_state key をそのまま利用できるようにしておく。
             if "quantifier" not in st.session_state:
                 st.session_state.quantifier = "salmon"
 
@@ -254,16 +278,20 @@ def run_app() -> None:
                 st.session_state.quantifier_version = "1.10.1"
 
             # [v0.6.0 C-03 / C-08]
-            # session_state が salmon_index_path / tx2gene_path を直接保持している。
-            # つまり GUI の入力契約自体が Salmon 前提になっている。
-            # v0.6.0 では backend 非依存な reference/index/resource 名へ寄せる
+            # session_state には quantifier 文脈も入ったが、
+            # reference 側の入力契約には依然として salmon_index_path / tx2gene_path という
+            # Salmon 固有語彙が残っている。
+            # 今後は quantifier 本体の抽象化と同様に、reference 契約の整理も進めたい。
             st.session_state.salmon_index_path = reference_values["salmon_index_path"]
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
 
             # [v0.6.0 C-04]
-            # UI から取得した参照情報を Salmon 専用 validator で直接検証している。
-            # validator の責務分離前に名称だけ変えると危険なので、
-            # まずは app.py -> generic validator facade の配線を作るのが安全。
+            # validator 層はまだ validate_salmon_index / validate_tx2gene_file という
+            # Salmon 前提の名前と契約を持っている。
+            # 現段階では app.py 側から安全に利用しつつ、将来的な facade 化に備えて論点を残している。
+            # --- Reference validation ---
+            # UI から受け取った reference/resource 入力を検証する。
+            # 現在の validator 名はまだ Salmon 前提だが、まずは既存挙動を壊さずに境界を明示する。
             index_validation = validate_salmon_index(st.session_state.salmon_index_path)
             tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
@@ -275,6 +303,9 @@ def run_app() -> None:
                 st.session_state.strandedness_prediction = None
                 st.session_state.last_salmon_index_path = st.session_state.salmon_index_path
 
+            # --- Strandedness estimation ---
+            # reference 情報と sample_df を用いて strandedness を推定する。
+            # 現状は Salmon index を前提とするため、将来的には backend 依存機能として隔離候補である。
             if reference_values.get("estimate_strandedness"):
                 if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
                     with st.spinner("Strandedness を推定中..."):
@@ -292,6 +323,9 @@ def run_app() -> None:
                 else:
                     st.warning("サンプル表が空、または Salmon Index パスが無効なため、推定できません。")
 
+            # --- Run readiness validation ---
+            # ここまでに集めた入力・reference・sample 情報をまとめて検証し、
+            # 実行可能かどうかを最終判定する。
             run_validation = validate_run_conditions(
                 input_dir=st.session_state.input_dir,
                 output_dir=st.session_state.output_dir,
@@ -310,9 +344,9 @@ def run_app() -> None:
             st.session_state.strandedness_mode = run_values["strandedness_mode"]
             st.session_state.threads = run_values["threads"]
 
-            # ---
-            # Handle Run Execution
-            # ---
+            # --- Run execution preparation ---
+            # 実行要求が来たら、run directory を確保し、
+            # backend 実行に必要な artifact を inputs/ 配下へ書き出す。
             if run_values["run_requested"]:
                 started_at_iso = datetime.now(timezone.utc).astimezone().isoformat()
                 job_id = f"RUN_GUI_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -321,9 +355,12 @@ def run_app() -> None:
                 dirs = setup_run_directory(Path(st.session_state.output_dir), job_id)
                 
                 # [v0.6.0 C-03 / C-08 / C-09]
-                # run_config.json の内容が salmon_index_path / tx2gene_path を前提に固定されている。
-                # app.py が GUI 入力を backend 固有 config へ直接落としているため、
-                # v0.6.0 では app.py -> generic run request config -> backend adapterの段階を分けたい。
+                # run_config.json には reference 側の Salmon 語彙がまだ残るが、
+                # 実行文脈として quantifier / quantifier_version も合わせて記録するようにした。
+                # 今後は app.py -> generic run request config -> backend adapter という責務分離をさらに明確化したい。
+                # --- Run config export ---
+                # gui backend 実行に必要な設定を run_config.json として固定化する。
+                # このファイルは CLI 経由で backend 実行へ受け渡される実行契約である。
                 config_data = {
                     "analysis_name": st.session_state.analysis_name,
                     "input_dir": str(Path(st.session_state.input_dir).resolve()),
@@ -349,6 +386,9 @@ def run_app() -> None:
                         return p_list
                     return [str(Path(p).resolve()) for p in p_list]
 
+                # --- Backend sample sheet export ---
+                # backend 実行用に sample_df をシリアライズし、
+                # run directory 内の sample_sheet.csv として保存する。
                 backend_df = st.session_state.sample_df.copy()
                 for col in ["r1_paths", "r2_paths", "all_paths"]:
                     if col in backend_df.columns:
@@ -357,11 +397,13 @@ def run_app() -> None:
                 sample_sheet_path = (dirs.inputs / "sample_sheet.csv").resolve()
                 backend_df.to_csv(sample_sheet_path, index=False)
                 
-                # 追跡可能性のためにGUIステータスを書き込み (v0.5.0 requirement)
-                # [v0.6.0 C-03]
-                # gui_input_status.csv にも salmon_index_path / tx2gene_path を直接書いている。
-                # トレーサビリティ要件自体は維持しつつ、
-                # backend 固有語彙の露出をどの層まで許容するか整理が必要。
+                # [v0.6.0 C-03 / C-09]
+                # gui_input_status.csv には reference 側の Salmon 語彙がまだ残るが、
+                # quantifier / quantifier_version も含めて実行文脈を保存するようにした。
+                # 将来的には、どこまでを generic input status として扱うかを整理したい。
+                # --- GUI input status export ---
+                # GUI 実行時点の入力条件を追跡可能な形で保存する。
+                # reference/resource 情報に加えて、quantifier 文脈もここへ明示的に残す。
                 status_df = pd.DataFrame([
                     {"parameter": "analysis_name", "value": st.session_state.analysis_name},
                     {"parameter": "input_dir", "value": str(Path(st.session_state.input_dir).resolve())},
@@ -384,6 +426,9 @@ def run_app() -> None:
                 # app.py は最終的に run-gui-backend へ config file を渡すだけだが、
                 # その config schema がすでに Salmon 固有である点が本質。
                 # ここは CLI コマンド自体より、前段の config 契約を抽象化するのが先。
+                # --- Job request submission payload ---
+                # job runner に渡す要求オブジェクトを構築する。
+                # config / sample sheet / quantifier 文脈をまとめて background 実行へ引き渡す。
                 command = [
                     "pixi", "run", "python", str(Path(__file__).parent.resolve() / "cli.py"),
                     "run-gui-backend",
@@ -416,9 +461,8 @@ def run_app() -> None:
                 st.rerun()
 
         else:
-            # ==========================================
-            # JOB VIEW MODE
-            # ==========================================
+            # --- Job view mode ---
+            # 既存ジョブの状態確認、進行中ジョブの監視、完了済みジョブの結果表示を担当する。
             current_job = next((s for s in recent_runs if s.run_dir.name == st.session_state.selected_job_id), None)
             
             if not current_job:
@@ -457,6 +501,9 @@ def run_app() -> None:
                     st.rerun()
                     
                 elif spec.status == "completed":
+                    # --- Completed job result loading ---
+                    # run directory から結果 artifact を読み戻し、
+                    # Result section に渡せる形へ整形して表示する。
                     run_dir = current_job.run_dir
                     
                     # Load results locally for rendering
@@ -491,7 +538,8 @@ def run_app() -> None:
             else:
                 st.warning("Could not retrieve job status.")
 
-        # Shared Footer
+        # --- Validation detail dump ---
+        # 開発・デバッグ用に、各 validation 結果をそのまま確認できるようにしておく。
         with st.expander("Validation details"):
             st.write({
                 "name_validation": name_validation,
@@ -503,6 +551,9 @@ def run_app() -> None:
             })
 
 def main() -> None:
+    # --- Session state initialization ---
+    # UI が期待する既定値を session_state に補完する。
+    # ここでは初期表示・後方互換・旧セッションからの移行をまとめて扱う。
     init_session_state()
     run_app()
 
