@@ -8,8 +8,15 @@ from ..models.assay import AssaySpec
 from ..models.matrix import MatrixSpec
 from ..models.execution_run import ExecutionRunSpec
 
+# --- Assay-level pipeline orchestration ---
+# runner.py は AssaySpec を受け取り、
+# assay 単位の quantification 実行、gene-level 集約、spec 出力情報の組み立てを担当する。
+# backend 実装の解決は quantifier registry に委譲し、この層では共通フローを維持する。
 logger = logging.getLogger(__name__)
 
+# --- Assay pipeline entrypoint ---
+# 1 assay 分の入力を受け取り、counts / logs / specs の出力先を初期化し、
+# downstream で利用する MatrixSpec / ExecutionRunSpec を返す。
 def run_counter_pipeline(
     assay_spec: AssaySpec,
     outdir: Path,
@@ -20,6 +27,9 @@ def run_counter_pipeline(
 ) -> tuple[MatrixSpec, ExecutionRunSpec]:
     started_at = datetime.now(timezone.utc).astimezone().isoformat()
 
+    # --- Output directory preparation ---
+    # assay 実行に必要な出力ディレクトリを先に確保する。
+    # counts, logs, specs をここで分けておくことで、artifact の責務を明確にする。
     outdir.mkdir(parents=True, exist_ok=True)
     counts_dir = outdir / "counts"
     logs_dir = outdir / "logs"
@@ -28,6 +38,9 @@ def run_counter_pipeline(
     logs_dir.mkdir(exist_ok=True)
     specs_dir.mkdir(exist_ok=True)
 
+    # --- Input file extraction ---
+    # AssaySpec から FASTQ 入力を取り出し、
+    # quantifier 実行に必要な最小構造へ正規化する。
     fastq_r1 = next((f.path for f in assay_spec.input_files if f.file_role.lower() == "fastq_r1"), None)
     fastq_r2 = next((f.path for f in assay_spec.input_files if f.file_role.lower() == "fastq_r2"), None)
 
@@ -36,6 +49,9 @@ def run_counter_pipeline(
     r2_paths = [fastq_r2] if fastq_r2 else []
     all_paths = r1_paths if layout_final == "single-end" else []
 
+    # --- Minimal sample dataframe assembly ---
+    # legacy quantification 実装が受け取れる形式に合わせて、
+    # 1 assay / 1 specimen 分の sample_df を最小構成で組み立てる。
     sample_df = pd.DataFrame([{
         "sample_id": assay_spec.specimen_id,
         "layout_final": layout_final,
@@ -44,19 +60,30 @@ def run_counter_pipeline(
         "all_paths": all_paths,
     }])
 
+    # --- Reference resource extraction ---
+    # AssaySpec に含まれる reference resource から、
+    # quantifier 実行と gene-level 集約に必要な参照情報を取り出す。
     salmon_index = None
     tx2gene = None
     if assay_spec.reference_resources:
         # [v0.6.0 C-08]
-        # 現状は reference_resources から salmon_index / tx2gene を直接取り出しており、
-        # reference 契約が Salmon 前提の命名になっている。
-        # v0.6.0 では backend 非依存な reference/index/resource 参照へ寄せたい。
+        # reference_resources から quantifier 実行用 index と tx2gene を取り出している。
+        # quantifier 実行の抽象化は進んだが、reference 側の命名と契約には
+        # まだ Salmon 由来の概念が残っている。
+        # 今後は backend 非依存な reference/index/resource 契約へ段階的に寄せたい。
         salmon_index = assay_spec.reference_resources.quantifier_index
         tx2gene = assay_spec.reference_resources.tx2gene_path
 
+    # --- Required reference validation ---
+# 現行 backend 実行では quantifier index が必須であるため、
+# 実行前に最低限の前提条件をここで確認する。
     if not salmon_index:
         raise ValueError("salmon_index is required in AssaySpec.reference_resources")
 
+    # --- Quantifier execution ---
+    # 指定された quantifier 名から backend 実装を解決し、
+    # 共通インターフェース経由で quantification を実行する。
+    # runner 自体は backend 実装の詳細を直接知らない。
     quant = get_quantifier(quantifier)
 
     run_result = quant.run_quant(
@@ -70,21 +97,33 @@ def run_counter_pipeline(
         },
     )
 
+    # --- Quantifier result validation ---
+    # backend 実行結果から per-sample 出力を取り出し、
+    # downstream 集約へ進める最低条件を確認する
     outputs = run_result["outputs"]
+    # TODO(v0.6.x): 失敗メッセージも backend 非依存な表現へ寄せる余地がある。
     if not outputs or not outputs[0].get("is_success"):
         raise RuntimeError("Salmon quantification failed.")
 
     if not tx2gene:
         raise NotImplementedError("Transcript-level un-aggregated output is not currently handled without tx2gene.")
 
+    # --- Gene-level aggregation ---
+    # quantifier 出力から transcript-level の NumReads を取得し、
+    # tx2gene を使って gene-level count matrix へ集約する。
     tx2gene_df = load_tx2gene_map(tx2gene)
     t_nr_df = build_transcript_quant_table(outputs, value_type="NumReads")
     g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
 
+    # --- Count matrix export ---
+    # reporter や downstream spec で参照できるように、
+    # gene-level raw count matrix を assay 出力として保存する。
     matrix_path = counts_dir / "gene_numreads.tsv"
     g_nr_df.to_csv(matrix_path, sep="\t")
     
-    # v0.5.1: Prepare standardized feature_annotation.tsv
+    # --- Feature annotation preparation ---
+    # reporter 側で使う feature_annotation.tsv を準備する。
+    # annotation が無い場合でも matrix 自体は保持し、表示時に feature_id fallback を許容する。
     from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
     annotation_out = get_standard_annotation_path(outdir)
     # Ensure results dir exists
@@ -94,6 +133,9 @@ def run_counter_pipeline(
     subject_id = assay_spec.metadata.get("subject_id")
     source_subject_ids = [subject_id] if subject_id else []
 
+    # --- MatrixSpec assembly ---
+    # assay 実行で得られた gene-level matrix を、
+    # downstream が読める標準 spec として表現する。
     matrix_spec = MatrixSpec(
         schema_name="MatrixSpec",
         schema_version="0.1.0",
@@ -145,9 +187,9 @@ def run_counter_pipeline(
             "strandedness_mode": assay_spec.strandedness or "Auto-detect",
             "profile": profile,
             # [v0.6.0 C-09]
-            # 実行 backend / quantifier 情報が parameters にも流入している。
-            # ExecutionRunSpec 側で backend / quantifier の正式格納位置を整理し、
-            # parameters は run-time option に寄せるか再編したい。
+            # parameters には run-time option と execution context の一部が入る。
+            # 現在は quantifier 名や reference 参照も含めているが、
+            # 将来的には run option と backend identity / resource refs の境界を整理したい。
             "salmon_index": str(salmon_index),
             "tx2gene_path": str(tx2gene),
         },
@@ -157,5 +199,7 @@ def run_counter_pipeline(
         status="completed",
         log_path=str((logs_dir / "run.log").resolve()),
     )
-    
+    # --- Pipeline return values ---
+    # assay-level の matrix spec と execution run spec を返し、
+    # 呼び出し側で永続化または downstream 処理へ接続できるようにする。
     return matrix_spec, run_spec
