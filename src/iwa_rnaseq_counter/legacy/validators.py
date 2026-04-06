@@ -42,7 +42,7 @@ from .strandedness import validate_strandedness_selection
 # 単体の値検証と、run 可否の総合判定の両方を担当する。
 
 
-# --- Basic input/output validation ---s
+# --- Basic input/output validation ---
 # 入力ディレクトリ、解析名、出力ディレクトリなど、
 # 実行前に必ず成立していてほしい基本条件を検証する。
 
@@ -320,18 +320,11 @@ def validate_run_conditions(
     checks = {
         "fastq_detected": validate_fastq_detected(sample_df),
         "sample_structure": validate_sample_structure(sample_df),
-        # [v0.6.0 C-04 / C-08]
-        # check key も validator 呼び出し先も Salmon 固有。
-        # UI 表示や validation details の表示項目に影響する可能性があるため、
-        # 置換時は app.py 側の参照も合わせて確認する。
-
-        # reference 側の検証は現時点では Salmon index validator を直接利用している。
-        # 今後ここを generic reference validator へ差し替えられる形にしたい。
         # [v0.6.0 C-03 / C-04 / C-08]
-        # ここは app.py / CLI と validator 群の境界にある総合判定関数である。
         # reference 側の実体ロジックにはまだ Salmon 由来の判定が残るが、
         # 引数名・check key・呼び出し名は facade を介して backend 非依存へ寄せ始めている。
-        # 今後は facade の内側も段階的に backend 分離していきたい。
+        # v0.6.x では UI/CLI 境界の契約整理を優先し、
+        # facade の内側の backend 分離は次段階で進める。
         "quantifier_index": validate_quantifier_index(quantifier_index_path),
         "tx2gene": validate_tx2gene_file(tx2gene_path),
         "strandedness": validate_strandedness_selection(strandedness_mode, strandedness_result),
