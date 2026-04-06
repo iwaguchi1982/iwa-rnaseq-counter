@@ -1,3 +1,32 @@
+#
+# app.py
+# 全体の役割：StreamlitベースのGUIエントリーポイント。入力収集、検証、解析実行（Run artifact作成）、ジョブ監視、結果表示を一括で管理。
+# セッション管理：Streamlitの session_state 初期化、旧バージョンからの移行、およびジョブ選択状態の永続化を担当。
+# ジョブ探索：Runs Root（出力ディレクトリ）を走査し、過去および実行中の解析ジョブを自動検出・一覧化。
+# ---
+# 主要な機能ブロック
+# 1. View Mode 管理:
+# 「新規解析・入力モード (Run/Input)」と「ジョブ履歴モード (Job History)」を切り替え。
+# 履歴からのジョブ選択時に、解析設定や結果表示モードへ自動遷移するオーケストレーション。
+# 
+# 2. 入力設定と検証 (Input Mode):
+# 解析名、入出力ディレクトリのバリデーション。
+# FASTQファイルの自動探索、サンプルグループ化、ライブラリレイアウト（Single/Paired）やレーンの自動推定。
+# CSVサンプルシートの読み込みによる設定の復元。
+# 
+# 3. リファレンスと推論:
+# Salmon Index や tx2gene ファイルのパス検証。
+# リファレンスと一部のデータを用いたライブラリ鎖性（Strandedness）の自動推定。
+# 
+# 4. 解析実行準備とジョブ投入:
+# 実行ディレクトリの構築と、backend（cli.py）への実行契約となる artifact（run_config.json, sample_sheet.csv 等）の書き出し。
+# LocalJobExecutor を介した cli.py (run-gui-backend) のバックグラウンド起動。
+# 
+# 5. ジョブ監視と結果表示:
+# 実行中ジョブのステータス（queued/running/completed/failed）をリアルタイムに監視。
+# 完了したジョブの実行サマリーと出力ファイルを読み込み、GUI上に解析結果をレンダリング。
+#
+
 from __future__ import annotations
 
 import streamlit as st

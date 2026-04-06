@@ -1,3 +1,29 @@
+#
+# runner.py
+# 全体の役割：アッセイ（単一サンプル）単位のパイプライン実行オーケストレーター。AssaySpec を受け取り、定量計算、遺伝子集計、および標準規格の Spec 出力を担当。
+# 抽象化の維持：具体的な計算ロジックは quantifier registry 経由で各 backend に委譲し、この層では共通の処理フローを維持する。
+# ---
+# 主要な処理ステップ
+# 1. 出力ディレクトリの初期化:
+# アッセイごとの実行結果を格納するための counts, logs, specs ディレクトリを自動作成し、成果物の責務を分離。
+# 
+# 2. 入力データの正規化:
+# AssaySpec から FASTQ ファイルのパスを抽出し、Single-end/Paired-end の判定と backend が解釈可能な DataFrame 形式への変換を行う。
+# 
+# 3. リソースの解決と検証:
+# 実行に必要な quantifier index や tx2gene マップを AssaySpec から取り出す。実行前にインデックスの存在を最低限チェックし、エラーを未然に防ぐ。
+# 
+# 4. 定量計算の実行:
+# 指定された Quantifier（Salmon 等）を呼び出し、共通インターフェースを通じて定量処理を実行。runner 自身は各ツールのコマンド詳細を直接は関知しない。
+# 
+# 5. 遺伝子レベルへの集約と保存:
+# 転写産物レベルの定量結果を遺伝子レベルのカウント行列（raw count）へ集約。結果を TSV 形式で counts ディレクトリに保存。
+# 
+# 6. 標準 Spec (Contract) の生成:
+# 解析結果のメタデータを MatrixSpec として、実行記録を ExecutionRunSpec として構築。
+# これにより、後続の解析ステップや統合処理がツールの種類に依存せず、型安全に結果を利用できるようにする。
+# 
+
 import logging
 import pandas as pd
 from datetime import datetime, timezone
@@ -75,8 +101,8 @@ def run_counter_pipeline(
         tx2gene = assay_spec.reference_resources.tx2gene_path
 
     # --- Required reference validation ---
-# 現行 backend 実行では quantifier index が必須であるため、
-# 実行前に最低限の前提条件をここで確認する。
+    # 現行 backend 実行では quantifier index が必須であるため、
+    # 実行前に最低限の前提条件をここで確認する。
     if not salmon_index:
         raise ValueError("salmon_index is required in AssaySpec.reference_resources")
 

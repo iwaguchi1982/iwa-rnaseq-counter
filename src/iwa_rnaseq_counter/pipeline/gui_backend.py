@@ -1,3 +1,28 @@
+# gui_backend.py
+# 全体の役割：GUIから投入されたジョブのバックエンド実行を担う中心的なパイプライン。データの定量、集計、成果物（Artifact）の生成を一括で行う。
+# 処理の流れ：設定読込 → Quantifier実行 → 成功結果の集約 → 行列・サマリー保存 → アノテーション準備 → マニフェスト保存 → Spec出力
+# ---
+# 主要な処理ステップ
+# 1. 実行構成の読み込みと解決:
+# GUIから渡された config_data からリファレンスパス、スレッド数、鎖性設定などの実行条件を抽出。
+# 選択された Quantifier（現在は主に Salmon）を registry から取得して初期化。
+# 
+# 2. 定量計算 (Quantification):
+# 配置されたサンプルごとに定量ツールを実行。
+# 全サンプルのうち成功したものと失敗したものを分離・フィルタリングし、下流処理の安全性を確保。
+# 
+# 3. 遺伝子レベルへの集計 (Aggregation):
+# 転写産物（Transcript）レベルの定量結果を、tx2geneマップを用いて遺伝子（Gene）レベルへ集計。
+# TPM および NumReads の両方の指標について、Transcript/Gene 各層の行列を構築。
+# 
+# 4. 実行サマリーと統計の生成:
+# 解析名、サンプル数、成功数、処理時間、Quantifier情報など、実行のすべてを記録した run_summary を生成。
+# 
+# 5. 成果物 (Artifact) のエクスポート:
+# 行列データ（CSV）、実行サマリー（JSON）、アノテーション表（TSV）を所定のディレクトリ構造に従って保存。
+# 下流の解析ツール（Reporterなど）がデータを正しく読み込めるよう、dataset_manifest.json および標準規格の Spec ファイルを出力。
+#
+
 import time
 import pandas as pd
 from pathlib import Path
