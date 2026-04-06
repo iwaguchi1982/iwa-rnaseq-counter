@@ -81,9 +81,18 @@ def build_execution_run_spec_from_gui_result(
         "input_dir": str(run_summary.get("input_dir", "")),
         "sample_count": run_summary.get("sample_count", 0),
         "success_count": run_summary.get("success_count", 0),
-        "strandedness_mode": run_summary.get("strandedness", {}).get("mode", "Auto-detect") if isinstance(run_summary.get("strandedness"), dict) else "Auto-detect",
+        "strandedness_mode": (
+            run_summary.get("strandedness", {}).get("mode", "Auto-detect")
+            if isinstance(run_summary.get("strandedness"), dict)
+            else "Auto-detect"
+        ),
         "threads": run_summary.get("threads", 4),
-        "quantifier": "salmon"
+        "quantifier": run_summary.get("quantifier", "salmon"),
+        "quantifier_version": run_summary.get("quantifier_version", "unknown"),
+        "aggregation_input_kind": run_summary.get(
+            "aggregation_input_kind",
+            "transcript_quant",
+        ),
     }
     
     sample_ids = run_summary.get("sample_ids_success", [])

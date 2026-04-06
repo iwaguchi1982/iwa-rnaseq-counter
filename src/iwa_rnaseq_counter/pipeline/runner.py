@@ -72,14 +72,14 @@ def run_counter_pipeline(
         "all_paths": all_paths,
     }])
 
-    salmon_index = None
+    quantifier_index = None
     tx2gene = None
     if assay_spec.reference_resources:
-        salmon_index = assay_spec.reference_resources.quantifier_index
+        quantifier_index = assay_spec.reference_resources.quantifier_index
         tx2gene = assay_spec.reference_resources.tx2gene_path
 
-    if not salmon_index:
-        raise ValueError("salmon_index is required in AssaySpec.reference_resources")
+    if not quantifier_index:
+        raise ValueError("quantifier_index is required in AssaySpec.reference_resources")
 
     # Quantifier execution via Registry (v0.7.0)
     quant = get_quantifier(quantifier)
@@ -89,7 +89,7 @@ def run_counter_pipeline(
         threads=threads,
         strandedness_mode=assay_spec.strandedness or "Auto-detect",
         reference_config={
-            "quantifier_index": salmon_index,
+            "quantifier_index": quantifier_index,
             "tx2gene_path": tx2gene,
         },
     )
@@ -131,6 +131,11 @@ def run_counter_pipeline(
             "producer_app": "iwa_rnaseq_counter",
             "producer_version": "0.3.5",
             "quantifier": run_result["quantifier"],
+            "quantifier_version": run_result.get("quantifier_version"),
+            "aggregation_input_kind": run_result.get(
+                "aggregation_input_kind",
+                "transcript_quant",
+            ),
             "reference_context": run_result.get("reference_context", {}),
             "tx2gene_path": str(tx2gene),
             "sample_ids": [assay_spec.specimen_id],
@@ -153,6 +158,10 @@ def run_counter_pipeline(
         parameters={
             "quantifier": run_result["quantifier"],
             "quantifier_version": run_result.get("quantifier_version"),
+            "aggregation_input_kind": run_result.get(
+                "aggregation_input_kind",
+                "transcript_quant",
+            ),
             "threads": threads,
             "strandedness_mode": assay_spec.strandedness or "Auto-detect",
             "profile": profile,

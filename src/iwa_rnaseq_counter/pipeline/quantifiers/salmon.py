@@ -28,22 +28,32 @@ class SalmonQuantifier(BaseQuantifier):
         """
         legacy runner を呼び出し、結果を v0.7.x 規格へ変換して返す。
         """
-        # reference_config から salmon_index を取得
-        # v0.7.0 ではキー名は salmon_index_path を優先的に探す
-        salmon_index = reference_config.get("quantifier_index") or reference_config.get("salmon_index_path")
+        # reference_config から quantifier index を取得する。
+        # v0.7.0 では互換のため salmon_index_path も受け入れるが、
+        # public contract 上は quantifier_index を正とする。
+        quantifier_index = (
+            reference_config.get("quantifier_index")
+            or reference_config.get("salmon_index_path")
+        )
         
-        if not salmon_index:
+        if not quantifier_index:
             return {
                 "is_success": False,
                 "quantifier": self.name,
-                "errors": ["salmon_index_path is required in reference_config."],
+                "quantifier_version": self.resolve_version(),
+                "aggregation_input_kind": "transcript_quant",
+                "reference_context": {},
+                "errors": ["quantifier_index is required in reference_config."],
+                "warnings": [],
+                "log_summary": "",
+                "master_log_path": None,
                 "outputs": [],
             }
 
         # 既存ロジックの実行
         legacy_result = run_salmon_quant(
             sample_df=sample_df,
-            salmon_index_path=str(salmon_index),
+            salmon_index_path=str(quantifier_index),
             run_output_dir=str(run_output_dir),
             strandedness_mode=strandedness_mode,
             threads=threads,
@@ -80,7 +90,12 @@ class SalmonQuantifier(BaseQuantifier):
             "quantifier_version": self.resolve_version(),
             "aggregation_input_kind": "transcript_quant",
             "reference_context": {
-                "salmon_index": str(salmon_index),
+                "quantifier_index_path": str(quantifier_index),
+                "tx2gene_path": (
+                    str(reference_config.get("tx2gene_path"))
+                    if reference_config.get("tx2gene_path")
+                    else None
+                ),
             },
             "errors": legacy_result.get("errors", []),
             "warnings": legacy_result.get("warnings", []),
