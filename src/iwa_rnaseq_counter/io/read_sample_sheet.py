@@ -1,3 +1,25 @@
+#
+# read_sample_sheet.py
+# 全体の役割：ユーザー提供のサンプルシート（CSV）を読み込み、内部モデルである AssaySpec のリスト形式へ変換するパーサー。
+# 責務：表形式の入力データを解析し、各行を独立したアッセイ定義へと写像することで、バッチ処理の基盤を提供。
+# ---
+# 主要な機能ブロック
+# 1. 共通リソースの注入:
+# 全サンプルに共通して適用される定量用インデックスや tx2gene マップのパスを受け取り、各 AssaySpec の reference_resources 領域へ埋め込む。
+# 
+# 2. CSV 解析とバリデーション:
+# csv.DictReader を用いて各行を走査。必須列（sample_id, r1_path）の存在確認や、exclude 列による実行対象からの除外判定を行う。
+# 
+# 3. アッセイモデルの構築:
+# 各行のデータから AssaySpec オブジェクトを生成。ライブラリレイアウト（Single/Paired）の明示的な指定または R2 パスの有無による自動推定を担当。
+# 
+# 4. メタデータの自動収集:
+# 解析に直接使われない任意の列（Group, Condition, Replicate 等）を抽出し、metadata 辞書に格納。実験デザイン情報を後続の工程まで引き継ぐ。
+# 
+# 5. パスと構造の整合性チェック:
+# 必須ファイルの欠損や無効なレイアウト指定を検出し、パイプライン実行前に適切なエラーを発生させることでデータ整合性を担保。
+# 
+
 import csv
 from pathlib import Path
 
@@ -5,16 +27,23 @@ from ..models.assay import AssaySpec, InputFile, ReferenceResources
 
 def read_sample_sheet(
     sample_sheet_path: Path,
-    salmon_index_path: str | None = None,
+    quantifier_index_path: str | None = None,
     tx2gene_path: str | None = None,
     strandedness: str = "Auto-detect",
+    salmon_index_path: str | None = None,
 ) -> list[AssaySpec]:
     """
-    Reads a sample sheet CSV and yields AssaySpec objects.
-    
-    Required columns: sample_id, r1_path
-    Optional columns: r2_path, layout, exclude, etc.
+    サンプルシートのCSVファイルを読み込み、AssaySpecオブジェクトを生成します。
+    必須列：sample_id、r1_path
+    オプション列：r2_path、layout、excludeなど
     """
+    resolved_quantifier_index = quantifier_index_path or salmon_index_path
+    if resolved_quantifier_index or tx2gene_path:
+        ref_res = ReferenceResources(
+            quantifier_index=resolved_quantifier_index,
+            tx2gene_path=tx2gene_path,
+        )
+
     if not sample_sheet_path.exists():
         raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
 

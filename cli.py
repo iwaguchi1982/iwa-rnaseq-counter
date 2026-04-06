@@ -191,7 +191,7 @@ def main():
             # reference/resource 側の I/O 契約整理がまだ必要である。
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
-                salmon_index_path=str(args.salmon_index),
+                quantifier_index_path=str(args.salmon_index),
                 tx2gene_path=str(args.tx2gene),
                 strandedness=args.strandedness,
             )
