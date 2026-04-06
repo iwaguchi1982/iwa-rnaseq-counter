@@ -15,6 +15,46 @@ def _get_success_outputs(outputs: list[dict]) -> list[dict]:
     return [o for o in outputs if o.get("is_success")]
 
 
+def _load_gene_counts_table(gene_counts_path: str | Path) -> pd.DataFrame:
+    df = pd.read_csv(gene_counts_path, sep="\t")
+
+    if {"feature_id", "count"}.issubset(df.columns):
+        out = df[["feature_id", "count"]].copy()
+    elif df.shape[1] >= 2:
+        out = df.iloc[:, :2].copy()
+        out.columns = ["feature_id", "count"]
+    else:
+        raise ValueError(f"Unsupported gene_counts file shape: {gene_counts_path}")
+
+    out["feature_id"] = out["feature_id"].astype(str)
+    out["count"] = pd.to_numeric(out["count"], errors="coerce").fillna(0).astype(int)
+    return out
+
+
+def _build_gene_counts_matrix_from_outputs(success_outputs: list[dict]) -> pd.DataFrame:
+    series_list: list[pd.Series] = []
+
+    for output in success_outputs:
+        gene_counts_path = output.get("gene_counts_path")
+        sample_id = output.get("sample_id")
+
+        if not gene_counts_path:
+            # v0.7.1 fallback: gene_counts_path should be there if aggregation_input_kind is gene_counts
+            raise ValueError(f"gene_counts_path is missing for sample {sample_id}")
+
+        counts_df = _load_gene_counts_table(gene_counts_path)
+        s = counts_df.set_index("feature_id")["count"]
+        s.name = str(sample_id)
+        series_list.append(s)
+
+    if not series_list:
+        raise RuntimeError("No gene-level count outputs were available.")
+
+    matrix_df = pd.concat(series_list, axis=1).fillna(0).astype(int)
+    matrix_df.index.name = "feature_id"
+    return matrix_df
+
+
 def _build_gene_numreads_matrix(run_result: dict, tx2gene_path: str | None) -> pd.DataFrame:
     aggregation_input_kind = run_result.get("aggregation_input_kind", "transcript_quant")
     success_outputs = _get_success_outputs(run_result.get("outputs", []))
@@ -32,8 +72,7 @@ def _build_gene_numreads_matrix(run_result: dict, tx2gene_path: str | None) -> p
         return aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
 
     if aggregation_input_kind == "gene_counts":
-        # Future: implement direct gene-level loading if backend provides it
-        raise NotImplementedError("Direct gene_counts aggregation input is not yet implemented in runner.py")
+        return _build_gene_counts_matrix_from_outputs(success_outputs)
 
     raise ValueError(f"Unknown aggregation_input_kind: {aggregation_input_kind!r}")
 
