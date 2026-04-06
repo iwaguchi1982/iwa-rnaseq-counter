@@ -52,16 +52,16 @@ from iwa_rnaseq_counter.legacy.sample_parser import (
 )
 from iwa_rnaseq_counter.legacy.strandedness import infer_strandedness
 # [v0.6.0 C-04]
-# validation 層が validate_salmon_index / validate_tx2gene_file という
-# Salmon 前提の関数名・契約を UI へ直接露出している。
-# v0.6.0 では app.py が backend 固有 validator 名を直接知らず、
-# reference/index validator の抽象名へ寄せたい。
+# validation 層の実体ロジックにはまだ Salmon 前提が残るが、
+# app.py は facade 側の抽象名を優先して利用する。
+# v0.6.x では UI 境界から backend 固有 validator 名を減らし、
+# reference/index validator の抽象名へ寄せていく。
 from iwa_rnaseq_counter.legacy.validators import (
     validate_analysis_name,
     validate_input_directory,
     validate_output_directory,
+    validate_quantifier_index,
     validate_run_conditions,
-    validate_salmon_index,
     validate_tx2gene_file,
 )
 from ui.sections import (
@@ -315,13 +315,13 @@ def run_app() -> None:
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
 
             # [v0.6.0 C-04]
-            # validator 層はまだ validate_salmon_index / validate_tx2gene_file という
-            # Salmon 前提の名前と契約を持っている。
-            # 現段階では app.py 側から安全に利用しつつ、将来的な facade 化に備えて論点を残している。
+            # validator 層の実体にはまだ Salmon 前提ロジックが残るが、
+            # app.py 側は facade を介して reference validation を呼ぶ。
+            # v0.6.x ではまず UI 境界の命名を backend 非依存へ寄せる。
             # --- Reference validation ---
             # UI から受け取った reference/resource 入力を検証する。
             # 現在の validator 名はまだ Salmon 前提だが、まずは既存挙動を壊さずに境界を明示する。
-            index_validation = validate_salmon_index(st.session_state.salmon_index_path)
+            index_validation = validate_quantifier_index(st.session_state.salmon_index_path)
             tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
             if st.session_state.get("last_salmon_index_path") != st.session_state.salmon_index_path:
@@ -334,15 +334,16 @@ def run_app() -> None:
 
             # --- Strandedness estimation ---
             # reference 情報と sample_df を用いて strandedness を推定する。
-            # 現状は Salmon index を前提とするため、将来的には backend 依存機能として隔離候補である。
+            # 現状は Salmon index を前提とする補助機能であり、
+            # v0.6.x では generic 化せず隔離対象として扱う。
             if reference_values.get("estimate_strandedness"):
                 if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
                     with st.spinner("Strandedness を推定中..."):
 
                         # [v0.6.0 C-03 / C-08]
-                        # strandedness 推定が salmon_index_path を直接要求している。
-                        # ここは将来的に backend 別推定へ広げるか、
-                        # まずは Salmon 専用機能として adapter に隔離する必要あり。
+                        # strandedness 推定はまだ salmon_index_path を直接要求している。
+                        # ここは v0.6.x では無理に汎化せず、
+                        # Salmon 専用補助機能として残しつつ隔離対象であることを明示する。
                         strandedness_result = infer_strandedness(
                             sample_df=st.session_state.sample_df,
                             input_dir=st.session_state.input_dir,
@@ -359,7 +360,7 @@ def run_app() -> None:
                 input_dir=st.session_state.input_dir,
                 output_dir=st.session_state.output_dir,
                 sample_df=st.session_state.get("sample_df"),
-                salmon_index_path=st.session_state.salmon_index_path,
+                quantifier_index_path=st.session_state.salmon_index_path,
                 tx2gene_path=st.session_state.tx2gene_path,
                 strandedness_mode=st.session_state.get("strandedness_mode", "Auto-detect"),
                 strandedness_result=st.session_state.get("strandedness_prediction"),
