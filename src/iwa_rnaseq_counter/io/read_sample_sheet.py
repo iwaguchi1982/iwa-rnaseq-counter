@@ -42,16 +42,6 @@ def read_sample_sheet(
         ref_res = ReferenceResources(
             quantifier_index=resolved_quantifier_index,
             tx2gene_path=tx2gene_path,
-    )
-
-    if not sample_sheet_path.exists():
-        raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
-
-    ref_res = None
-    if salmon_index_path or tx2gene_path:
-        ref_res = ReferenceResources(
-            quantifier_index=salmon_index_path,
-            tx2gene_path=tx2gene_path,
         )
 
     assays: list[AssaySpec] = []
