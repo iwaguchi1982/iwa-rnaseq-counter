@@ -124,6 +124,12 @@ def build_execution_run_spec_from_gui_result(
         "strandedness_mode": run_summary.get("strandedness", {}).get("mode", "Auto-detect")
         if isinstance(run_summary.get("strandedness"), dict) else "Auto-detect",
         "threads": run_summary.get("threads", 4),
+
+        # [v0.6.0 C-05 / C-09]
+        # GUI adapter は ExecutionRunSpec.parameters に quantifier 情報を記録している。
+        # 現在は gui_backend が構築した run_summary 由来の実行文脈をそのまま受け取り、
+        # adapter 層で backend 名を固定値として再定義しないようにしている。
+        # 将来的には execution context の注入境界をさらに整理したい。
         "quantifier": run_summary.get("quantifier", "salmon"),
         "quantifier_version": run_summary.get("quantifier_version", "unknown"),
     }
