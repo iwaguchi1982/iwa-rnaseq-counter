@@ -28,12 +28,12 @@ from typing import List, Optional, Dict, Any
 # MatrixSpec は downstream が matrix artifact を読むための標準契約である。
 # 実データ本体の path、軸情報、feature 情報、由来情報を保持し、
 # 実行 backend の詳細そのものは持ち込みすぎない方針で設計する。
-@dataclass
 
 # --- Matrix artifact contract ---
 # このモデルは assay-level / analysis-level を問わず、
 # matrix 系成果物を共通の shape で表現するための dataclass である。
 # runner / gui adapter / reporter 側の受け渡しの土台になる。
+@dataclass
 class MatrixSpec:
     schema_name: str
     schema_version: str
@@ -80,10 +80,10 @@ class MatrixSpec:
     # core contract を汚さずに局所的な補助情報を持たせたい場合に使う。
     overlay: Dict[str, Any] = field(default_factory=dict)
 
-    @classmethod
     # --- Deserialization from stored spec ---
     # 保存済みの dict 表現から MatrixSpec を復元する。
     # reader 側ではこの入口を通して共通契約へ戻す。
+    @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MatrixSpec":
 
         # [v0.6.0 C-09]

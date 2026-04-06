@@ -30,12 +30,12 @@ from typing import List, Optional, Dict, Any
 # ExecutionRunSpec は 1 回の実行を追跡するための標準契約である。
 # 入力参照、出力参照、実行時パラメータ、状態、ログ位置などを保持し、
 # downstream から「何がどう実行されたか」を後追いできるようにする。
-@dataclass
 
 # --- Run record contract ---
 # このモデルは assay 実行、batch 実行、GUI 実行などを問わず、
 # 1 run を共通の shape で表現するための dataclass である。
 # 実行内容そのものではなく、実行記録としての責務を持つ。
+@dataclass
 class ExecutionRunSpec:
     schema_name: str
     schema_version: str

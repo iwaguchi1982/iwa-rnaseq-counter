@@ -121,14 +121,11 @@ def build_execution_run_spec_from_gui_result(
         "input_dir": str(run_summary.get("input_dir", "")),
         "sample_count": run_summary.get("sample_count", 0),
         "success_count": run_summary.get("success_count", 0),
-        "strandedness_mode": run_summary.get("strandedness", {}).get("mode", "Auto-detect") if isinstance(run_summary.get("strandedness"), dict) else "Auto-detect",
+        "strandedness_mode": run_summary.get("strandedness", {}).get("mode", "Auto-detect")
+        if isinstance(run_summary.get("strandedness"), dict) else "Auto-detect",
         "threads": run_summary.get("threads", 4),
-
-        # [v0.6.0 C-05 / C-09]
-        # GUI adapter は ExecutionRunSpec.parameters に quantifier 情報を記録している。
-        # 現時点ではまだ固定値 "salmon" を置いているため、
-        # 今後は run_summary 由来または正規化済み execution context から受け取る形へ寄せたい。
-        "quantifier": "salmon"
+        "quantifier": run_summary.get("quantifier", "salmon"),
+        "quantifier_version": run_summary.get("quantifier_version", "unknown"),
     }
     
     # MatrixSpec 側と対応が取れるように、successful sample_id から input_refs 用の assay ID を合成する。
