@@ -42,7 +42,7 @@ from .strandedness import validate_strandedness_selection
 # 単体の値検証と、run 可否の総合判定の両方を担当する。
 
 
-# --- Basic input/output validation ---
+# --- Basic input/output validation ---s
 # 入力ディレクトリ、解析名、出力ディレクトリなど、
 # 実行前に必ず成立していてほしい基本条件を検証する。
 
@@ -156,6 +156,21 @@ def validate_tx2gene_file(tx2gene_path: str) -> dict:
         return _invalid(f"tx2gene ファイルを読み込めません: {e}")
 
     return _valid()
+
+
+# [v0.6.0 C-04 / C-08]
+# generic な validator 名の受け口。
+# 現段階では内部実装を既存の Salmon validator へ委譲し、
+# 呼び出し側の命名だけを段階的に backend 非依存へ寄せる。
+def validate_quantifier_index(quantifier_index_path: str) -> dict:
+    return validate_salmon_index(quantifier_index_path)
+
+
+# [v0.6.0 C-04]
+# generic な binary preflight check の受け口。
+# 現段階では既存の salmon binary check をそのまま利用する。
+def validate_quantifier_binary() -> dict:
+    return validate_salmon_binary()
 
 # --- Sample structure validation ---
 # sample_df の内容が downstream 実行に耐えられるかを確認する。
@@ -295,7 +310,7 @@ def validate_run_conditions(
     input_dir: str,
     output_dir: str,
     sample_df: pd.DataFrame | None,
-    salmon_index_path: str,
+    quantifier_index_path: str,
     tx2gene_path: str,
     strandedness_mode: str,
     strandedness_result: dict | None,
@@ -312,18 +327,16 @@ def validate_run_conditions(
 
         # reference 側の検証は現時点では Salmon index validator を直接利用している。
         # 今後ここを generic reference validator へ差し替えられる形にしたい。
-        "salmon_index": validate_salmon_index(salmon_index_path),
+        # [v0.6.0 C-03 / C-04 / C-08]
+        # ここは app.py / CLI と validator 群の境界にある総合判定関数である。
+        # reference 側の実体ロジックにはまだ Salmon 由来の判定が残るが、
+        # 引数名・check key・呼び出し名は facade を介して backend 非依存へ寄せ始めている。
+        # 今後は facade の内側も段階的に backend 分離していきたい。
+        "quantifier_index": validate_quantifier_index(quantifier_index_path),
         "tx2gene": validate_tx2gene_file(tx2gene_path),
         "strandedness": validate_strandedness_selection(strandedness_mode, strandedness_result),
         "output_dir": validate_output_directory(output_dir),
-        # [v0.6.0 C-04]
-        # 実行前チェックに salmon binary の存在確認が直結している。
-        # backend 抽象化後は validate_quantifier_binary() 相当の facade か、
-        # backend 実装側の preflight check へ寄せたい。
-
-        # 実行環境チェックとして salmon binary の存在もここで確認している。
-        # 将来的には backend ごとの preflight check へ分離する余地がある。
-        "salmon_binary": validate_salmon_binary(),
+        "quantifier_binary": validate_quantifier_binary(),
     }
     
     if sample_df is not None and not sample_df.empty and "input_source" in sample_df.columns:
