@@ -27,7 +27,7 @@ from iwa_rnaseq_counter.legacy.validators import (
     validate_input_directory,
     validate_output_directory,
     validate_run_conditions,
-    validate_salmon_index,
+    validate_quantifier_index,
     validate_tx2gene_file,
 )
 from ui.sections import (
@@ -63,6 +63,11 @@ def init_session_state() -> None:
     # Backward compatibility: 旧セッションで recovery フラグが無ければ初回復元を有効化
     if "needs_initial_recovery" not in st.session_state:
         st.session_state.needs_initial_recovery = True
+
+    if "quantifier" not in st.session_state:
+        st.session_state.quantifier = "salmon"
+    if "quantifier_index_path" not in st.session_state:
+        st.session_state.quantifier_index_path = ""
 
 def run_app() -> None:
     st.set_page_config(page_title="iwa-rnaseq-counter", layout="wide")
@@ -231,34 +236,56 @@ def run_app() -> None:
                 st.session_state.sample_df if st.session_state.sample_df is not None else pd.DataFrame()
             )
 
+            st.session_state.quantifier = st.selectbox(
+                "Quantifier",
+                options=["salmon", "star"],
+                index=0 if st.session_state.get("quantifier", "salmon") == "salmon" else 1,
+                help="v0.7.1 では salmon / star を選択できます。",
+            )
+
             reference_values = render_reference_section()
-            st.session_state.salmon_index_path = reference_values["salmon_index_path"]
+
+            # v0.7.1 最小版:
+            # 既存 UI.sections は salmon_index_path を返す前提のまま使い、
+            # app.py 側で generic key へ写像する。
+            st.session_state.quantifier_index_path = reference_values["salmon_index_path"]
+            st.session_state.salmon_index_path = st.session_state.quantifier_index_path  # compatibility alias
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
 
-            index_validation = validate_salmon_index(st.session_state.salmon_index_path)
+            index_validation = validate_quantifier_index(
+                st.session_state.quantifier_index_path,
+                quantifier=st.session_state.quantifier,
+            )
             tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
-            if st.session_state.get("last_salmon_index_path") != st.session_state.salmon_index_path:
+            if st.session_state.get("last_quantifier_index_path") != st.session_state.quantifier_index_path:
                 st.session_state.strandedness_prediction = None
-                st.session_state.last_salmon_index_path = st.session_state.salmon_index_path
+                st.session_state.last_quantifier_index_path = st.session_state.quantifier_index_path
 
             if reference_values.get("estimate_strandedness"):
-                if st.session_state.get("sample_df") is not None and not st.session_state.sample_df.empty and index_validation["is_valid"]:
+                if st.session_state.quantifier != "salmon":
+                    st.info("v0.7.1 では strandedness 推定は Salmon backend のみ対応です。STAR では手動指定してください。")
+                elif (
+                    st.session_state.get("sample_df") is not None
+                    and not st.session_state.sample_df.empty
+                    and index_validation["is_valid"]
+                ):
                     with st.spinner("Strandedness を推定中..."):
                         strandedness_result = infer_strandedness(
                             sample_df=st.session_state.sample_df,
                             input_dir=st.session_state.input_dir,
-                            salmon_index_path=st.session_state.salmon_index_path,
+                            salmon_index_path=st.session_state.quantifier_index_path,
                         )
                         st.session_state.strandedness_prediction = strandedness_result
                 else:
-                    st.warning("サンプル表が空、または Salmon Index パスが無効なため、推定できません。")
+                    st.warning("サンプル表が空、または Quantifier Index パスが無効なため、推定できません。")
 
             run_validation = validate_run_conditions(
                 input_dir=st.session_state.input_dir,
                 output_dir=st.session_state.output_dir,
                 sample_df=st.session_state.get("sample_df"),
-                salmon_index_path=st.session_state.salmon_index_path,
+                quantifier=st.session_state.quantifier,
+                quantifier_index_path=st.session_state.quantifier_index_path,
                 tx2gene_path=st.session_state.tx2gene_path,
                 strandedness_mode=st.session_state.get("strandedness_mode", "Auto-detect"),
                 strandedness_result=st.session_state.get("strandedness_prediction"),
@@ -284,11 +311,14 @@ def run_app() -> None:
                     "analysis_name": st.session_state.analysis_name,
                     "input_dir": str(Path(st.session_state.input_dir).resolve()),
                     "output_dir": str(Path(st.session_state.output_dir).resolve()),
-                    "salmon_index_path": str(Path(st.session_state.salmon_index_path).resolve()),
+                    "quantifier": st.session_state.quantifier,
+                    "quantifier_index_path": str(Path(st.session_state.quantifier_index_path).resolve()),
+                    # compatibility alias
+                    "salmon_index_path": str(Path(st.session_state.quantifier_index_path).resolve()),
                     "tx2gene_path": str(Path(st.session_state.tx2gene_path).resolve()),
                     "strandedness_mode": st.session_state.strandedness_mode,
                     "threads": st.session_state.threads,
-                    "strandedness_prediction": st.session_state.strandedness_prediction
+                    "strandedness_prediction": st.session_state.strandedness_prediction,
                 }
                 config_path = (dirs.inputs / "run_config.json").resolve()
                 with open(config_path, "w") as f:
@@ -314,7 +344,10 @@ def run_app() -> None:
                     {"parameter": "analysis_name", "value": st.session_state.analysis_name},
                     {"parameter": "input_dir", "value": str(Path(st.session_state.input_dir).resolve())},
                     {"parameter": "output_dir", "value": str(Path(st.session_state.output_dir).resolve())},
-                    {"parameter": "salmon_index_path", "value": str(Path(st.session_state.salmon_index_path).resolve())},
+                    {"parameter": "quantifier", "value": st.session_state.quantifier},
+                    {"parameter": "quantifier_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
+                    # compatibility alias
+                    {"parameter": "salmon_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
                     {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve())},
                     {"parameter": "strandedness_mode", "value": st.session_state.strandedness_mode},
                     {"parameter": "threads", "value": st.session_state.threads},

@@ -79,6 +79,43 @@ def validate_salmon_index(salmon_index_path: str) -> dict:
     return _valid()
 
 
+def validate_star_index(star_index_path: str) -> dict:
+    if not star_index_path:
+        return _invalid("STAR index が指定されていません。")
+
+    path = Path(star_index_path)
+    if not path.exists() or not path.is_dir():
+        return _invalid("STAR index パスが有効ではありません。")
+
+    # v0.7.1 最小版:
+    # STAR genomeDir の代表的な構成ファイルを最低限チェックする
+    required_candidates = [
+        "genomeParameters.txt",
+        "SA",
+        "SAindex",
+        "Genome",
+        "chrName.txt",
+    ]
+    missing = [name for name in required_candidates if not (path / name).exists()]
+    if missing:
+        return _invalid(
+            f"STAR genome index として不完全な可能性があります。不足候補: {', '.join(missing)}"
+        )
+
+    return _valid()
+
+
+def validate_quantifier_index(quantifier_index_path: str, quantifier: str = "salmon") -> dict:
+    q = str(quantifier or "salmon").strip().lower()
+
+    if q == "salmon":
+        return validate_salmon_index(quantifier_index_path)
+    if q == "star":
+        return validate_star_index(quantifier_index_path)
+
+    return _invalid(f"未対応の quantifier です: {quantifier}")
+
+
 def validate_tx2gene_file(tx2gene_path: str) -> dict:
     if not tx2gene_path:
         return _invalid("tx2gene ファイルが指定されていません。")
@@ -215,19 +252,29 @@ def validate_run_conditions(
     input_dir: str,
     output_dir: str,
     sample_df: pd.DataFrame | None,
-    salmon_index_path: str,
-    tx2gene_path: str,
-    strandedness_mode: str,
-    strandedness_result: dict | None,
+    quantifier_index_path: str | None = None,
+    tx2gene_path: str | None = None,
+    strandedness_mode: str = "Auto-detect",
+    strandedness_result: dict | None = None,
+    quantifier: str = "salmon",
+    salmon_index_path: str | None = None,  # backward compatibility
 ) -> dict:
+    resolved_quantifier_index = quantifier_index_path or salmon_index_path or ""
+
     checks = {
         "fastq_detected": validate_fastq_detected(sample_df),
         "sample_structure": validate_sample_structure(sample_df),
-        "salmon_index": validate_salmon_index(salmon_index_path),
-        "tx2gene": validate_tx2gene_file(tx2gene_path),
-        "strandedness": validate_strandedness_selection(strandedness_mode, strandedness_result),
+        "quantifier_index": validate_quantifier_index(
+            resolved_quantifier_index,
+            quantifier=quantifier,
+        ),
+        "tx2gene": validate_tx2gene_file(tx2gene_path or ""),
+        "strandedness": validate_strandedness_selection(
+            strandedness_mode,
+            strandedness_result,
+        ),
         "output_dir": validate_output_directory(output_dir),
-        "salmon_binary": validate_salmon_binary(),
+        "quantifier_binary": validate_quantifier_binary(quantifier=quantifier),
     }
     
     if sample_df is not None and not sample_df.empty and "input_source" in sample_df.columns:
@@ -254,6 +301,23 @@ def validate_salmon_binary() -> dict:
     if shutil.which("salmon") is None:
         return _invalid("salmon コマンドが見つかりません。PATH を確認してください。")
     return _valid()
+
+
+def validate_star_binary() -> dict:
+    if shutil.which("STAR") is None:
+        return _invalid("STAR コマンドが見つかりません。PATH を確認してください。")
+    return _valid()
+
+
+def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
+    q = str(quantifier or "salmon").strip().lower()
+
+    if q == "salmon":
+        return validate_salmon_binary()
+    if q == "star":
+        return validate_star_binary()
+
+    return _invalid(f"未対応の quantifier です: {quantifier}")
 
 
 def _valid() -> dict:

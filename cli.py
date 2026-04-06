@@ -49,7 +49,8 @@ def main():
 
     p_batch = subparsers.add_parser("run-batch", help="Run multiple AssaySpecs from a sample sheet")
     p_batch.add_argument("--sample-sheet", required=True, type=Path)
-    p_batch.add_argument("--salmon-index", required=True, type=Path)
+    p_batch.add_argument("--quantifier-index", type=Path, help="Generic quantifier index path (preferred)")
+    p_batch.add_argument("--salmon-index", type=Path, help="Legacy alias for --quantifier-index")
     p_batch.add_argument("--tx2gene", required=True, type=Path)
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
     p_batch.add_argument("--outdir", required=True, type=Path)
@@ -104,11 +105,15 @@ def main():
         logger = logging.getLogger(__name__)
 
         from iwa_rnaseq_counter.io.read_sample_sheet import read_sample_sheet
-        
+
+        quantifier_index_arg = args.quantifier_index or args.salmon_index
+        if quantifier_index_arg is None:
+            parser.error("run-batch requires --quantifier-index (or legacy --salmon-index).")
+
         try:
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
-                salmon_index_path=str(args.salmon_index),
+                quantifier_index_path=str(quantifier_index_arg),
                 tx2gene_path=str(args.tx2gene),
                 strandedness=args.strandedness,
             )
