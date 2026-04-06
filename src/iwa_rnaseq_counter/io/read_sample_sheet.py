@@ -32,17 +32,17 @@ def read_sample_sheet(
     strandedness: str = "Auto-detect",
     salmon_index_path: str | None = None,
 ) -> list[AssaySpec]:
-    """
-    サンプルシートのCSVファイルを読み込み、AssaySpecオブジェクトを生成します。
-    必須列：sample_id、r1_path
-    オプション列：r2_path、layout、excludeなど
-    """
     resolved_quantifier_index = quantifier_index_path or salmon_index_path
+
+    if not sample_sheet_path.exists():
+        raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
+
+    ref_res = None
     if resolved_quantifier_index or tx2gene_path:
         ref_res = ReferenceResources(
             quantifier_index=resolved_quantifier_index,
             tx2gene_path=tx2gene_path,
-        )
+    )
 
     if not sample_sheet_path.exists():
         raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
