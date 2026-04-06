@@ -3,13 +3,40 @@ import pandas as pd
 from datetime import datetime, timezone
 from pathlib import Path
 
-from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
+from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import load_tx2gene_map, build_transcript_quant_table, aggregate_transcript_to_gene
 from ..models.assay import AssaySpec
 from ..models.matrix import MatrixSpec
 from ..models.execution_run import ExecutionRunSpec
 
 logger = logging.getLogger(__name__)
+
+def _get_success_outputs(outputs: list[dict]) -> list[dict]:
+    return [o for o in outputs if o.get("is_success")]
+
+
+def _build_gene_numreads_matrix(run_result: dict, tx2gene_path: str | None) -> pd.DataFrame:
+    aggregation_input_kind = run_result.get("aggregation_input_kind", "transcript_quant")
+    success_outputs = _get_success_outputs(run_result.get("outputs", []))
+
+    if not success_outputs:
+        raise RuntimeError("No successful quantifier outputs found.")
+
+    if aggregation_input_kind == "transcript_quant":
+        if not tx2gene_path:
+            raise NotImplementedError(
+                "Transcript-level output requires tx2gene_path for gene-level aggregation."
+            )
+        tx2gene_df = load_tx2gene_map(tx2gene_path)
+        t_nr_df = build_transcript_quant_table(success_outputs, value_type="NumReads")
+        return aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
+
+    if aggregation_input_kind == "gene_counts":
+        # Future: implement direct gene-level loading if backend provides it
+        raise NotImplementedError("Direct gene_counts aggregation input is not yet implemented in runner.py")
+
+    raise ValueError(f"Unknown aggregation_input_kind: {aggregation_input_kind!r}")
+
 
 def run_counter_pipeline(
     assay_spec: AssaySpec,
@@ -54,27 +81,21 @@ def run_counter_pipeline(
     if not salmon_index:
         raise ValueError("salmon_index is required in AssaySpec.reference_resources")
 
-    if quantifier != "salmon":
-        raise NotImplementedError(f"Only quantifier='salmon' is supported now, got: {quantifier!r}")
-
-    run_result = run_salmon_quant(
+    # Quantifier execution via Registry (v0.7.0)
+    quant = get_quantifier(quantifier)
+    run_result = quant.run_quant(
         sample_df=sample_df,
-        salmon_index_path=salmon_index,
-        run_output_dir=str(outdir),
-        strandedness_mode=assay_spec.strandedness or "Auto-detect",
+        run_output_dir=outdir,
         threads=threads,
+        strandedness_mode=assay_spec.strandedness or "Auto-detect",
+        reference_config={
+            "quantifier_index": salmon_index,
+            "tx2gene_path": tx2gene,
+        },
     )
 
-    outputs = run_result["outputs"]
-    if not outputs or not outputs[0].get("is_success"):
-        raise RuntimeError("Salmon quantification failed.")
-
-    if not tx2gene:
-        raise NotImplementedError("Transcript-level un-aggregated output is not currently handled without tx2gene.")
-
-    tx2gene_df = load_tx2gene_map(tx2gene)
-    t_nr_df = build_transcript_quant_table(outputs, value_type="NumReads")
-    g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
+    # Aggregation entry point (v0.7.0)
+    g_nr_df = _build_gene_numreads_matrix(run_result, tx2gene)
 
     matrix_path = counts_dir / "gene_numreads.tsv"
     g_nr_df.to_csv(matrix_path, sep="\t")
@@ -109,8 +130,8 @@ def run_counter_pipeline(
         metadata={
             "producer_app": "iwa_rnaseq_counter",
             "producer_version": "0.3.5",
-            "quantifier": quantifier,
-            "salmon_index": str(salmon_index),
+            "quantifier": run_result["quantifier"],
+            "reference_context": run_result.get("reference_context", {}),
             "tx2gene_path": str(tx2gene),
             "sample_ids": [assay_spec.specimen_id],
             "feature_id_system_inferred": False,
@@ -130,11 +151,12 @@ def run_counter_pipeline(
         input_refs=[assay_spec.assay_id],
         output_refs=[matrix_spec.matrix_id],
         parameters={
-            "quantifier": quantifier,
+            "quantifier": run_result["quantifier"],
+            "quantifier_version": run_result.get("quantifier_version"),
             "threads": threads,
             "strandedness_mode": assay_spec.strandedness or "Auto-detect",
             "profile": profile,
-            "salmon_index": str(salmon_index),
+            "reference_context": run_result.get("reference_context", {}),
             "tx2gene_path": str(tx2gene),
         },
         execution_backend=profile,

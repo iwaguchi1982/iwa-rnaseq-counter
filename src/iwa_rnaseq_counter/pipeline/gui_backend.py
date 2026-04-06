@@ -4,12 +4,34 @@ from pathlib import Path
 from datetime import datetime, timezone
 import logging
 
-from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
+from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import build_transcript_quant_table, aggregate_transcript_to_gene, load_tx2gene_map, save_quant_tables
 from iwa_rnaseq_counter.legacy.run_artifacts import save_dataset_manifest
 from iwa_rnaseq_counter.builders.gui_artifact_export import write_gui_supporting_inputs
 
 logger = logging.getLogger(__name__)
+ 
+def _build_gui_matrices_from_run_result(run_result: dict, tx2gene_path: str):
+    aggregation_input_kind = run_result.get("aggregation_input_kind", "transcript_quant")
+    outputs = run_result.get("outputs", [])
+    success_outputs = [o for o in outputs if o.get("is_success")]
+
+    if not success_outputs:
+        raise RuntimeError("No successful quantifier outputs found.")
+
+    if aggregation_input_kind == "transcript_quant":
+        tx2gene_df = load_tx2gene_map(tx2gene_path)
+        t_tpm_df = build_transcript_quant_table(success_outputs, value_type="TPM")
+        t_nr_df = build_transcript_quant_table(success_outputs, value_type="NumReads")
+        g_tpm_df = aggregate_transcript_to_gene(t_tpm_df, tx2gene_df)
+        g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
+        return success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df
+
+    if aggregation_input_kind == "gene_counts":
+        raise NotImplementedError("gene_counts GUI aggregation path will be added in v0.7.1+.")
+
+    raise ValueError(f"Unsupported aggregation_input_kind: {aggregation_input_kind!r}")
+
 
 def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.DataFrame, started_at_iso: str):
     """
@@ -18,34 +40,46 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     """
     start_time = time.time()
     
-    salmon_index_path = config_data.get("salmon_index_path")
+    quantifier_name = config_data.get("quantifier", "salmon")
+    quantifier_index_path = (
+        config_data.get("quantifier_index_path")
+        or config_data.get("salmon_index_path")
+    )
     tx2gene_path = config_data.get("tx2gene_path")
     strandedness_mode = config_data.get("strandedness_mode", "Auto-detect")
     threads = config_data.get("threads", 4)
     analysis_name = config_data.get("analysis_name", "GUI_Run")
+    quantifier_version = config_data.get("quantifier_version")
     
-    logger.info("Step 1: Running Salmon for all samples...")
-    run_result = run_salmon_quant(
+    logger.info(f"Step 1: Running {quantifier_name} for all samples...")
+    quant = get_quantifier(quantifier_name)
+    run_result = quant.run_quant(
         sample_df=sample_df,
-        salmon_index_path=salmon_index_path,
-        run_output_dir=str(run_dir),
-        strandedness_mode=strandedness_mode,
+        run_output_dir=run_dir,
         threads=threads,
+        strandedness_mode=strandedness_mode,
+        reference_config={
+            "quantifier_index": quantifier_index_path,
+            "tx2gene_path": tx2gene_path,
+        },
+    )
+
+    quantifier_name = run_result.get("quantifier", quantifier_name)
+    quantifier_version = (
+        run_result.get("quantifier_version")
+        or quantifier_version
+        or "unknown"
     )
     
     outputs = run_result["outputs"]
-    success_outputs = [o for o in outputs if o.get("is_success")]
-    failure_count = len(outputs) - len(success_outputs)
+    failure_count = len(outputs) - len([o for o in outputs if o.get("is_success")])
     
-    if not success_outputs:
-        raise RuntimeError("All samples failed Salmon quantification.")
-        
+    success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df = _build_gui_matrices_from_run_result(
+        run_result,
+        tx2gene_path,
+    )
+
     logger.info(f"Step 2: Aggregating {len(success_outputs)} successful results...")
-    tx2gene_df = load_tx2gene_map(tx2gene_path)
-    t_tpm_df = build_transcript_quant_table(success_outputs, value_type="TPM")
-    t_nr_df = build_transcript_quant_table(success_outputs, value_type="NumReads")
-    g_tpm_df = aggregate_transcript_to_gene(t_tpm_df, tx2gene_df)
-    g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
     
     input_source = "unknown"
     if "input_source" in sample_df.columns and not sample_df.empty:
@@ -71,7 +105,15 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     rel_outputs = []
     for o in outputs:
         rel_o = o.copy()
-        for key in ["quant_path", "aux_info_dir", "log_path"]:
+        for key in [
+            "quant_path",
+            "transcript_quant_path",
+            "gene_counts_path",
+            "aux_info_dir",
+            "meta_info_json",
+            "log_path",
+            "output_dir",
+        ]:
             if rel_o.get(key):
                 try:
                     rel_o[key] = str(Path(rel_o[key]).relative_to(run_dir))
@@ -97,10 +139,14 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "elapsed_seconds": time.time() - start_time,
         "outputs": outputs,
         "save_path": str(run_dir),
-        "quantifier": "salmon",
-        "quantifier_version": "1.10.1",
-        "salmon_index_path": salmon_index_path,
+        "quantifier": quantifier_name,
+        "quantifier_version": quantifier_version,
+        "quantifier_index_path": quantifier_index_path,
+        # v0.7.0 compatibility alias:
+        # app.py / 過去run表示が salmon_index_path をまだ参照する可能性があるため残す
+        "salmon_index_path": quantifier_index_path,
         "tx2gene_path": tx2gene_path,
+        "aggregation_input_kind": run_result.get("aggregation_input_kind", "transcript_quant"),
         "strandedness": config_data.get("strandedness_prediction"),
         "threads": threads,
         "log_summary": run_result["log_summary"]
@@ -140,8 +186,8 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "run_name": analysis_name,
         "analysis_name": analysis_name,
         "input_source": input_source,
-        "quantifier": "salmon",
-        "quantifier_version": "1.10.1",
+        "quantifier": quantifier_name,
+        "quantifier_version": quantifier_version,
         "sample_count_total": len(sample_ids_all),
         "sample_count_success": len(sample_ids_success),
         "sample_count_failed": len(sample_ids_failed),
