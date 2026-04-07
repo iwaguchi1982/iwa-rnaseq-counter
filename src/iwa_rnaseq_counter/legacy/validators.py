@@ -186,28 +186,19 @@ def validate_backend_reference_requirements(
 ) -> dict:
     q = str(quantifier or "salmon").strip().lower()
 
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    # transcript-level backends
-    if q in {"salmon", "kallisto"}:
-        tx2gene_result = validate_tx2gene_file(tx2gene_path or "")
-        errors.extend(tx2gene_result.get("errors", []))
-        warnings.extend(tx2gene_result.get("warnings", []))
-
-    # gene-level HISAT2
-    if q == "hisat2":
-        gtf_result = validate_annotation_gtf_file(annotation_gtf_path or "")
-        errors.extend(gtf_result.get("errors", []))
-        warnings.extend(gtf_result.get("warnings", []))
-
     # STAR は v0.8.0 時点では tx2gene / GTF を必須にしない
     if q == "star":
         return _valid()
 
-    if errors:
-        return {"is_valid": False, "errors": errors, "warnings": warnings}
-    return {"is_valid": True, "errors": [], "warnings": warnings}
+    # transcript-level backends
+    if q in {"salmon", "kallisto"}:
+        return validate_tx2gene_file(tx2gene_path or "")
+
+    # gene-level HISAT2
+    if q == "hisat2":
+        return validate_annotation_gtf_file(annotation_gtf_path or "")
+
+    return _valid()
 
 
 def validate_sample_structure(sample_df: pd.DataFrame | None) -> dict:
