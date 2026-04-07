@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.resolve() / "src"))
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve() / "src"))
 
 from iwa_rnaseq_counter.io.read_assay_spec import read_assay_spec
+from iwa_rnaseq_counter.models.assay import AssaySpec, ReferenceResources
 from iwa_rnaseq_counter.io.read_matrix_spec import read_matrix_spec
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
@@ -42,10 +43,18 @@ def main():
     p_run.add_argument("--outdir", required=True, type=Path)
     p_run.add_argument("--run-id", type=str)
     p_run.add_argument("--profile", type=str, default="local")
-    p_run.add_argument("--quantifier", type=str, default="salmon")
+    p_run.add_argument(
+        "--quantifier",
+        type=str,
+        default="salmon",
+        help="Quantifier backend: salmon, star, hisat2, kallisto",
+    )
+    p_run.add_argument("--quantifier-index", type=Path, help="Override quantifier index path")
+    p_run.add_argument("--salmon-index", type=Path, help="Legacy alias for --quantifier-index")
+    p_run.add_argument("--tx2gene", type=Path, help="Override tx2gene path")
+    p_run.add_argument("--annotation-gtf", type=Path, help="Override annotation GTF path (required for hisat2)")
     p_run.add_argument("--threads", type=int, default=4)
     p_run.add_argument("--dry-run", action="store_true")
-    p_run.add_argument("--annotation-gtf", type=Path, help="Annotation GTF path (required for hisat2)")
     p_run.add_argument("--log-level", type=str, default="INFO")
 
     p_batch = subparsers.add_parser("run-batch", help="Run multiple AssaySpecs from a sample sheet")
@@ -83,7 +92,22 @@ def main():
     if args.command == "run-assay":
         setup_logging(args.log_level, args.outdir / "logs" / "counter.log")
         logger = logging.getLogger(__name__)
+
         assay_spec = read_assay_spec(args.assay_spec)
+
+        quantifier_index_arg = args.quantifier_index or args.salmon_index
+
+        try:
+            assay_spec = _apply_run_assay_reference_overrides(
+                assay_spec,
+                quantifier=args.quantifier,
+                quantifier_index=str(quantifier_index_arg) if quantifier_index_arg else None,
+                tx2gene_path=str(args.tx2gene) if args.tx2gene else None,
+                annotation_gtf_path=str(args.annotation_gtf) if args.annotation_gtf else None,
+            )
+        except Exception as e:
+            logger.error(f"Invalid run-assay reference configuration: {e}")
+            sys.exit(1)
 
         if args.dry_run:
             logger.info("Dry run complete. AssaySpec validated successfully.")
