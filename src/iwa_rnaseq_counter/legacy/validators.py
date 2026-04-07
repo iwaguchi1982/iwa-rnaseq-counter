@@ -120,6 +120,17 @@ def validate_hisat2_index(hisat2_index_path: str) -> dict:
     return _valid()
 
 
+def validate_kallisto_index(kallisto_index_path: str) -> dict:
+    if not kallisto_index_path:
+        return _invalid("kallisto index が指定されていません。")
+
+    path = Path(kallisto_index_path)
+    if not path.exists() or not path.is_file():
+        return _invalid(f"kallisto index ファイルが存在しません: {kallisto_index_path}")
+
+    return _valid()
+
+
 def validate_annotation_gtf_file(annotation_gtf_path: str) -> dict:
     if not annotation_gtf_path:
         return _invalid("annotation GTF ファイルが指定されていません。")
@@ -141,10 +152,9 @@ def validate_quantifier_index(
     if q == "star":
         return validate_star_index(quantifier_index_path)
     if q == "hisat2":
-        res = validate_hisat2_index(quantifier_index_path)
-        if not res["is_valid"]:
-            return res
-        return validate_annotation_gtf_file(annotation_gtf_path or "")
+        return validate_hisat2_index(quantifier_index_path)
+    if q == "kallisto":
+        return validate_kallisto_index(quantifier_index_path)
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 
@@ -166,6 +176,38 @@ def validate_tx2gene_file(tx2gene_path: str) -> dict:
         return _invalid(f"tx2gene ファイルを読み込めません: {e}")
 
     return _valid()
+
+
+def validate_backend_reference_requirements(
+    *,
+    quantifier: str,
+    tx2gene_path: str | None = None,
+    annotation_gtf_path: str | None = None,
+) -> dict:
+    q = str(quantifier or "salmon").strip().lower()
+
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    # transcript-level backends
+    if q in {"salmon", "kallisto"}:
+        tx2gene_result = validate_tx2gene_file(tx2gene_path or "")
+        errors.extend(tx2gene_result.get("errors", []))
+        warnings.extend(tx2gene_result.get("warnings", []))
+
+    # gene-level HISAT2
+    if q == "hisat2":
+        gtf_result = validate_annotation_gtf_file(annotation_gtf_path or "")
+        errors.extend(gtf_result.get("errors", []))
+        warnings.extend(gtf_result.get("warnings", []))
+
+    # STAR は v0.8.0 時点では tx2gene / GTF を必須にしない
+    if q == "star":
+        return _valid()
+
+    if errors:
+        return {"is_valid": False, "errors": errors, "warnings": warnings}
+    return {"is_valid": True, "errors": [], "warnings": warnings}
 
 
 def validate_sample_structure(sample_df: pd.DataFrame | None) -> dict:
@@ -303,7 +345,11 @@ def validate_run_conditions(
             quantifier=quantifier,
             annotation_gtf_path=annotation_gtf_path,
         ),
-        "tx2gene": validate_tx2gene_file(tx2gene_path or ""),
+        "backend_references": validate_backend_reference_requirements(
+            quantifier=quantifier,
+            tx2gene_path=tx2gene_path,
+            annotation_gtf_path=annotation_gtf_path,
+        ),
         "strandedness": validate_strandedness_selection(
             strandedness_mode,
             strandedness_result,
@@ -354,6 +400,12 @@ def validate_hisat2_binary() -> dict:
     return _valid()
 
 
+def validate_kallisto_binary() -> dict:
+    if shutil.which("kallisto") is None:
+        return _invalid("kallisto コマンドが見つかりません。PATH を確認してください。")
+    return _valid()
+
+
 def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
     q = str(quantifier or "salmon").strip().lower()
 
@@ -363,6 +415,8 @@ def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
         return validate_star_binary()
     if q == "hisat2":
         return validate_hisat2_binary()
+    if q == "kallisto":
+        return validate_kallisto_binary()
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 

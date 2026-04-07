@@ -232,7 +232,7 @@ def render_run_section(
         strandedness_mode = st.selectbox("strandedness", options=options, index=default_index)
 
     with col2:
-        threads = st.number_input("Salmon スレッド数", min_value=1, max_value=64, value=st.session_state.threads)
+        threads = st.number_input("Quantifier スレッド数", min_value=1, max_value=64, value=st.session_state.threads)
 
     if strandedness_result:
         color = "green" if strandedness_result.get("confidence") == "high" else "orange"
@@ -259,7 +259,7 @@ def render_run_section(
                 st.write(f"{'✅' if checks.get('sample_structure') else '❌'} サンプル不整合なし")
             with c2:
                 st.write(f"{'✅' if checks.get('quantifier_index') else '❌'} Quantifier index")
-                st.write(f"{'✅' if checks.get('tx2gene') else '❌'} tx2gene")
+                st.write(f"{'✅' if checks.get('backend_references') else '❌'} Backend reference")
             with c3:
                 st.write(f"{'✅' if checks.get('strandedness') else '❌'} strandedness")
                 st.write(f"{'✅' if checks.get('output_dir') else '❌'} 出力先")
