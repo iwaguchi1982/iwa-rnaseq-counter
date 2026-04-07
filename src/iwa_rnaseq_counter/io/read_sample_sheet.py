@@ -5,10 +5,11 @@ from ..models.assay import AssaySpec, InputFile, ReferenceResources
 
 def read_sample_sheet(
     sample_sheet_path: Path,
-    salmon_index_path: str | None = None,
+    quantifier_index_path: str | None = None,
     tx2gene_path: str | None = None,
     strandedness: str = "Auto-detect",
     annotation_gtf_path: str | None = None,
+    salmon_index_path: str | None = None,  # backward compatibility
 ) -> list[AssaySpec]:
     """
     Reads a sample sheet CSV and yields AssaySpec objects.
@@ -19,10 +20,12 @@ def read_sample_sheet(
     if not sample_sheet_path.exists():
         raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
 
+    resolved_quantifier_index = quantifier_index_path or salmon_index_path
+
     ref_res = None
-    if salmon_index_path or tx2gene_path or annotation_gtf_path:
+    if resolved_quantifier_index or tx2gene_path or annotation_gtf_path:
         ref_res = ReferenceResources(
-            quantifier_index=salmon_index_path,
+            quantifier_index=resolved_quantifier_index,
             tx2gene_path=tx2gene_path,
             annotation_gtf_path=annotation_gtf_path,
         )
