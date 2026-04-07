@@ -4,14 +4,14 @@ from .base import BaseQuantifier
 from .salmon import SalmonQuantifier
 from .star import StarQuantifier
 from .hisat2 import Hisat2Quantifier
+from .kallisto import KallistoQuantifier
 
 
 _QUANTIFIERS: dict[str, type[BaseQuantifier]] = {
     "salmon": SalmonQuantifier,
     "star": StarQuantifier,
     "hisat2": Hisat2Quantifier,
-    # v0.7.3+
-    # "kallisto": KallistoQuantifier,
+    "kallisto": KallistoQuantifier,
 }
 
 

@@ -120,6 +120,17 @@ def validate_hisat2_index(hisat2_index_path: str) -> dict:
     return _valid()
 
 
+def validate_kallisto_index(kallisto_index_path: str) -> dict:
+    if not kallisto_index_path:
+        return _invalid("kallisto index が指定されていません。")
+
+    path = Path(kallisto_index_path)
+    if not path.exists() or not path.is_file():
+        return _invalid(f"kallisto index ファイルが存在しません: {kallisto_index_path}")
+
+    return _valid()
+
+
 def validate_annotation_gtf_file(annotation_gtf_path: str) -> dict:
     if not annotation_gtf_path:
         return _invalid("annotation GTF ファイルが指定されていません。")
@@ -145,6 +156,8 @@ def validate_quantifier_index(
         if not res["is_valid"]:
             return res
         return validate_annotation_gtf_file(annotation_gtf_path or "")
+    if q == "kallisto":
+        return validate_kallisto_index(quantifier_index_path)
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 
@@ -354,6 +367,12 @@ def validate_hisat2_binary() -> dict:
     return _valid()
 
 
+def validate_kallisto_binary() -> dict:
+    if shutil.which("kallisto") is None:
+        return _invalid("kallisto コマンドが見つかりません。PATH を確認してください。")
+    return _valid()
+
+
 def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
     q = str(quantifier or "salmon").strip().lower()
 
@@ -363,6 +382,8 @@ def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
         return validate_star_binary()
     if q == "hisat2":
         return validate_hisat2_binary()
+    if q == "kallisto":
+        return validate_kallisto_binary()
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 

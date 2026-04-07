@@ -240,13 +240,13 @@ def run_app() -> None:
 
             st.session_state.quantifier = st.selectbox(
                 "Quantifier",
-                options=["salmon", "star", "hisat2"],
-                index=["salmon", "star", "hisat2"].index(
+                options=["salmon", "star", "hisat2", "kallisto"],
+                index=["salmon", "star", "hisat2", "kallisto"].index(
                     st.session_state.get("quantifier", "salmon")
-                    if st.session_state.get("quantifier", "salmon") in ["salmon", "star", "hisat2"]
+                    if st.session_state.get("quantifier", "salmon") in ["salmon", "star", "hisat2", "kallisto"]
                     else "salmon"
                 ),
-                help="v0.7.2 では salmon / star / hisat2 を選択できます。",
+                help="v0.7.3 では salmon / star / hisat2 / kallisto を選択できます。",
             )
 
             reference_values = render_reference_section()
