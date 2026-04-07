@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from iwa_rnaseq_counter.legacy.config import get_strandedness_options
-from iwa_rnaseq_counter.legacy.qc import evaluate_sample_qc
+from iwa_rnaseq_counter.legacy.qc import summarize_output_qc
 from iwa_rnaseq_counter.legacy.sample_parser import apply_sample_table_edits, parse_sample_sheet
 
 
@@ -282,6 +282,24 @@ def render_run_section(
     }
 
 
+def _build_result_file_links(output: dict[str, Any]) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+
+    transcript_path = output.get("transcript_quant_path") or output.get("quant_path")
+    if transcript_path:
+        links.append(("transcript_quant", str(transcript_path)))
+
+    gene_counts_path = output.get("gene_counts_path")
+    if gene_counts_path:
+        links.append(("gene_counts", str(gene_counts_path)))
+
+    log_path = output.get("log_path")
+    if log_path:
+        links.append(("log", str(log_path)))
+
+    return links
+
+
 def render_result_section(
     run_status: str,
     output_files: list[dict[str, str]] | None = None,
@@ -341,30 +359,48 @@ def render_result_section(
 
         with c_tbl:
             if "outputs" in run_summary:
-                with st.expander("マッピング統計サマリ", expanded=True):
+                outputs = run_summary["outputs"]
+                success_outputs = [o for o in outputs if o.get("is_success")]
+                has_mapping_metrics = run_summary.get("has_mapping_metrics", False)
+
+                title = "マッピング統計サマリ" if has_mapping_metrics else "出力サマリ"
+                with st.expander(title, expanded=True):
                     data = []
-                    for o in run_summary["outputs"]:
-                        if not o.get("is_success"): continue
-                        
-                        qc = evaluate_sample_qc(
-                            sample_id=o["sample_id"],
-                            num_processed=o.get("num_processed", 0),
-                            num_mapped=o.get("num_mapped", 0),
-                            num_decoy=o.get("num_decoy", 0),
-                            num_filter=o.get("num_filter", 0)
-                        )
-                        
-                        data.append({
-                            "QC": qc["icon"],
-                            "Sample": o["sample_id"],
-                            "Mapped%": f"{qc['mapping_rate']:.2f}%",
-                            "Decoy%": f"{qc['decoy_rate']:.1f}%",
-                            "Filt%": f"{qc['filter_rate']:.1f}%",
-                            "Mapped Reads": f"{o.get('num_mapped', 0):,}",
-                            "Alerts": ", ".join(qc["alerts"]) if qc["alerts"] else "OK"
-                        })
-                    st.table(pd.DataFrame(data))
-                    st.caption("🔴:<1%, 🟡:<10% mapping rate | Decoy: >20% | Filter: >30%")
+                    for o in success_outputs:
+                        qc = summarize_output_qc(o)
+
+                        if qc.get("metric_mode") == "mapping_stats":
+                            data.append({
+                                "QC": qc["icon"],
+                                "Sample": o["sample_id"],
+                                "Mode": "mapping",
+                                "Mapped%": f"{qc['mapping_rate']:.2f}%",
+                                "Decoy%": f"{qc['decoy_rate']:.1f}%",
+                                "Filt%": f"{qc['filter_rate']:.1f}%",
+                                "Mapped Reads": f"{(qc.get('mapped_reads') or 0):,}",
+                                "Alerts": ", ".join(qc["alerts"]) if qc["alerts"] else "OK",
+                            })
+                        else:
+                            data.append({
+                                "QC": qc["icon"],
+                                "Sample": o["sample_id"],
+                                "Mode": "artifact",
+                                "Mapped%": "-",
+                                "Decoy%": "-",
+                                "Filt%": "-",
+                                "Mapped Reads": "-",
+                                "Alerts": ", ".join(qc["alerts"]) if qc["alerts"] else "OK",
+                            })
+
+                    if data:
+                        st.table(pd.DataFrame(data))
+                    else:
+                        st.caption("表示できる successful output がありません。")
+
+                    if has_mapping_metrics:
+                        st.caption("🔴:<1%, 🟡:<10% mapping rate | Decoy: >20% | Filter: >30%")
+                    else:
+                        st.caption("gene_counts backend では mapping 統計の代わりに生成成果物ベースで表示します。")
 
         # 3. Detailed Sample Cards
         if "outputs" in run_summary:
@@ -384,42 +420,36 @@ def render_result_section(
                                     st.error(f"Error: {o.get('error_reason', 'Unknown error')}")
                             continue
 
-                        qc = evaluate_sample_qc(
-                            sample_id=o["sample_id"],
-                            num_processed=o.get("num_processed", 0),
-                            num_mapped=o.get("num_mapped", 0),
-                            num_decoy=o.get("num_decoy", 0),
-                            num_filter=o.get("num_filter", 0)
-                        )
-                        
+                        qc = summarize_output_qc(o)
+
                         with cols[j]:
                             with st.container(border=True):
                                 st.markdown(f"#### {qc['icon']} {o['sample_id']}")
-                                
-                                # Metrics column
-                                m_c1, m_c2 = st.columns(2)
-                                with m_c1:
-                                    st.caption("**Mapped:**")
-                                    st.caption("**Decoy:**")
-                                    st.caption("**Filtered:**")
-                                with m_c2:
-                                    st.caption(f"`{qc['mapping_rate']:.2f}%`")
-                                    st.caption(f"`{qc['decoy_rate']:.1f}%`")
-                                    st.caption(f"`{qc['filter_rate']:.1f}%`")
-                                
-                                # Alerts
+
+                                if qc.get("metric_mode") == "mapping_stats":
+                                    m_c1, m_c2 = st.columns(2)
+                                    with m_c1:
+                                        st.caption("**Mapped:**")
+                                        st.caption("**Decoy:**")
+                                        st.caption("**Filtered:**")
+                                    with m_c2:
+                                        st.caption(f"`{qc['mapping_rate']:.2f}%`")
+                                        st.caption(f"`{qc['decoy_rate']:.1f}%`")
+                                        st.caption(f"`{qc['filter_rate']:.1f}%`")
+                                else:
+                                    st.caption(f"**Output Mode:** `{run_summary.get('aggregation_input_kind', 'unknown')}`")
+                                    if o.get("transcript_quant_path") or o.get("quant_path"):
+                                        st.caption("Transcript-level output available")
+                                    if o.get("gene_counts_path"):
+                                        st.caption("Gene-level output available")
+
                                 if qc["alerts"]:
                                     for alert in qc["alerts"]:
                                         st.caption(f":orange[• {alert}]")
-                                
-                                # Files
+
                                 st.write("---")
-                                qpath = o.get("quant_path", "")
-                                if qpath:
-                                    q_p = Path(qpath)
-                                    log_path = q_p.parent / "logs" / "salmon_quant.log"
-                                    st.markdown(f"📄 [quant.sf](file://{qpath})")
-                                    st.markdown(f"📋 [salmon_log](file://{log_path})")
+                                for label, path in _build_result_file_links(o):
+                                    st.markdown(f"📄 [{label}](file://{path})")
 
         st.write("---")
 

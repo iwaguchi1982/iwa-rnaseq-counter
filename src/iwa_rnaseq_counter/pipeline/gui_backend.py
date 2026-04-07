@@ -80,6 +80,26 @@ def _build_gui_matrices_from_run_result(run_result: dict, tx2gene_path: str):
     raise ValueError(f"Unsupported aggregation_input_kind: {aggregation_input_kind!r}")
 
 
+def _summarize_output_capabilities(outputs: list[dict]) -> dict:
+    success_outputs = [o for o in outputs if o.get("is_success")]
+
+    has_mapping_metrics = any(
+        any(o.get(k) is not None for k in ["num_processed", "num_mapped", "mapping_rate"])
+        for o in success_outputs
+    )
+    has_transcript_quant = any(
+        bool(o.get("transcript_quant_path") or o.get("quant_path"))
+        for o in success_outputs
+    )
+    has_gene_counts = any(bool(o.get("gene_counts_path")) for o in success_outputs)
+
+    return {
+        "has_mapping_metrics": has_mapping_metrics,
+        "has_transcript_quant": has_transcript_quant,
+        "has_gene_counts": has_gene_counts,
+    }
+
+
 def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.DataFrame, started_at_iso: str):
     """
     Executes the exact pipeline that the GUI used to run synchronously.
@@ -170,6 +190,8 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
                     pass
         rel_outputs.append(rel_o)
         
+    capability_summary = _summarize_output_capabilities(outputs)
+
     run_summary = {
         "analysis_name": analysis_name,
         "run_name": analysis_name,
@@ -186,6 +208,9 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "transcript_rows": len(t_tpm_df),
         "gene_rows": len(g_nr_df),
         "elapsed_seconds": time.time() - start_time,
+        "has_mapping_metrics": capability_summary["has_mapping_metrics"],
+        "has_transcript_quant": capability_summary["has_transcript_quant"],
+        "has_gene_counts": capability_summary["has_gene_counts"],
         "outputs": outputs,
         "save_path": str(run_dir),
         "quantifier": quantifier_name,
