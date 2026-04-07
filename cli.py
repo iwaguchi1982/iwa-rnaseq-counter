@@ -34,6 +34,81 @@ def setup_logging(level: str, logfile: Path | None = None) -> None:
     )
 
 
+def _normalize_quantifier_name(quantifier: str | None) -> str:
+    return str(quantifier or "salmon").strip().lower()
+
+
+def _validate_reference_requirements_for_quantifier(
+    *,
+    quantifier: str,
+    quantifier_index: str | None = None,
+    tx2gene_path: str | None = None,
+    annotation_gtf_path: str | None = None,
+    context: str = "run",
+) -> None:
+    """
+    v0.8.3:
+    assay / batch / GUI で揃えたい required reference ルールを
+    CLI 側でも同じ形で使う。
+    """
+    q = _normalize_quantifier_name(quantifier)
+
+    if not quantifier_index:
+        raise ValueError(
+            f"{context}: quantifier_index is required. "
+            "Pass --quantifier-index (or legacy --salmon-index), or define it in the spec."
+        )
+
+    if q in {"salmon", "kallisto"} and not tx2gene_path:
+        raise ValueError(
+            f"{context}: tx2gene_path is required for quantifier '{q}'. "
+            "Pass --tx2gene or define it in the spec/sample sheet context."
+        )
+
+    if q == "hisat2" and not annotation_gtf_path:
+        raise ValueError(
+            f"{context}: annotation_gtf_path is required for quantifier 'hisat2'. "
+            "Pass --annotation-gtf or define it in the spec/sample sheet context."
+        )
+
+
+def _apply_run_assay_reference_overrides(
+    assay_spec: AssaySpec,
+    *,
+    quantifier: str,
+    quantifier_index: str | None = None,
+    tx2gene_path: str | None = None,
+    annotation_gtf_path: str | None = None,
+) -> AssaySpec:
+    """
+    run-assay 用:
+    AssaySpec.reference_resources に対して CLI override を適用し、
+    その後 quantifier 別 required reference を検証する。
+    """
+    ref = assay_spec.reference_resources
+    if ref is None:
+        ref = ReferenceResources()
+
+    if quantifier_index:
+        ref.quantifier_index = str(quantifier_index)
+    if tx2gene_path:
+        ref.tx2gene_path = str(tx2gene_path)
+    if annotation_gtf_path:
+        ref.annotation_gtf_path = str(annotation_gtf_path)
+
+    assay_spec.reference_resources = ref
+
+    _validate_reference_requirements_for_quantifier(
+        quantifier=quantifier,
+        quantifier_index=ref.quantifier_index,
+        tx2gene_path=ref.tx2gene_path,
+        annotation_gtf_path=ref.annotation_gtf_path,
+        context="run-assay",
+    )
+
+    return assay_spec
+
+
 def main():
     parser = argparse.ArgumentParser(description="iwa_rnaseq_counter CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -61,7 +136,7 @@ def main():
     p_batch.add_argument("--sample-sheet", required=True, type=Path)
     p_batch.add_argument("--quantifier-index", type=Path, help="Generic quantifier index path (preferred)")
     p_batch.add_argument("--salmon-index", type=Path, help="Legacy alias for --quantifier-index")
-    p_batch.add_argument("--tx2gene", required=True, type=Path)
+    p_batch.add_argument("--tx2gene", type=Path)
     p_batch.add_argument("--annotation-gtf", type=Path, help="Annotation GTF path (required for HISAT2)")
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
     p_batch.add_argument("--outdir", required=True, type=Path)
@@ -133,17 +208,23 @@ def main():
         from iwa_rnaseq_counter.io.read_sample_sheet import read_sample_sheet
 
         quantifier_index_arg = args.quantifier_index or args.salmon_index
-        if quantifier_index_arg is None:
-            parser.error("run-batch requires --quantifier-index (or legacy --salmon-index).")
 
-        if str(args.quantifier).strip().lower() == "hisat2" and args.annotation_gtf is None:
-            parser.error("run-batch with --quantifier hisat2 requires --annotation-gtf.")
+        try:
+            _validate_reference_requirements_for_quantifier(
+                quantifier=args.quantifier,
+                quantifier_index=str(quantifier_index_arg) if quantifier_index_arg else None,
+                tx2gene_path=str(args.tx2gene) if args.tx2gene else None,
+                annotation_gtf_path=str(args.annotation_gtf) if args.annotation_gtf else None,
+                context="run-batch",
+            )
+        except Exception as e:
+            parser.error(str(e))
 
         try:
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
-                quantifier_index_path=str(quantifier_index_arg),
-                tx2gene_path=str(args.tx2gene),
+                quantifier_index_path=str(quantifier_index_arg) if quantifier_index_arg else None,
+                tx2gene_path=str(args.tx2gene) if args.tx2gene else None,
                 strandedness=args.strandedness,
                 annotation_gtf_path=str(args.annotation_gtf) if args.annotation_gtf else None,
             )
