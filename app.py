@@ -28,7 +28,6 @@ from iwa_rnaseq_counter.legacy.validators import (
     validate_output_directory,
     validate_run_conditions,
     validate_quantifier_index,
-    validate_tx2gene_file,
 )
 from ui.sections import (
     render_analysis_section,
@@ -163,7 +162,7 @@ def run_app() -> None:
     
     else: # view_mode == "run"
         # Shared Validation results (initially empty)
-        name_validation = input_validation = output_validation = index_validation = tx2gene_validation = run_validation = {}
+        name_validation = input_validation = output_validation = index_validation = run_validation = {}
 
         # Run/Input Header
         col_title, col_new = st.columns([3, 1])
@@ -269,7 +268,6 @@ def run_app() -> None:
                 quantifier=st.session_state.quantifier,
                 annotation_gtf_path=st.session_state.annotation_gtf_path,
             )
-            tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
             if st.session_state.get("last_quantifier_index_path") != st.session_state.quantifier_index_path:
                 st.session_state.strandedness_prediction = None
@@ -367,7 +365,7 @@ def run_app() -> None:
                     {"parameter": "quantifier_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
                     # compatibility alias
                     {"parameter": "salmon_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
-                    {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve())},
+                    {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve()) if st.session_state.tx2gene_path else ""},
                     {"parameter": "annotation_gtf_path", "value": str(Path(st.session_state.annotation_gtf_path).resolve()) if st.session_state.annotation_gtf_path else ""},
                     {"parameter": "strandedness_mode", "value": st.session_state.strandedness_mode},
                     {"parameter": "threads", "value": st.session_state.threads},
@@ -488,7 +486,6 @@ def run_app() -> None:
                 "input_validation": input_validation,
                 "output_validation": output_validation,
                 "index_validation": index_validation,
-                "tx2gene_validation": tx2gene_validation,
                 "run_validation": run_validation,
             })
 

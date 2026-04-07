@@ -192,39 +192,44 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         
     capability_summary = _summarize_output_capabilities(outputs)
 
+    # v0.8.2 canonical summary keys:
+    # quantifier / quantifier_version / aggregation_input_kind /
+    # quantifier_index_path / tx2gene_path / annotation_gtf_path
+    #
+    # top-level reference paths are kept as absolute paths.
+    # per-output paths may be relativized only in disk_summary["outputs"].
     run_summary = {
         "analysis_name": analysis_name,
         "run_name": analysis_name,
+        "quantifier": quantifier_name,
+        "quantifier_version": quantifier_version,
+        "aggregation_input_kind": run_result.get("aggregation_input_kind", "transcript_quant"),
+        "quantifier_index_path": str(quantifier_index_path) if quantifier_index_path else None,
+        "tx2gene_path": str(tx2gene_path) if tx2gene_path else None,
+        "annotation_gtf_path": str(annotation_gtf_path) if annotation_gtf_path else None,
         "sample_count": len(sample_df),
         "success_count": len(success_outputs),
         "failure_count": failure_count,
         "sample_ids_all": sample_ids_all,
         "sample_ids_success": sample_ids_success,
         "sample_ids_failed": sample_ids_failed,
-        "sample_ids_aggregated": sample_ids_aggregated,
-        "input_source": input_source,
-        "sample_metadata_columns": sample_metadata_columns,
-        "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
         "transcript_rows": len(t_tpm_df),
         "gene_rows": len(g_nr_df),
-        "elapsed_seconds": time.time() - start_time,
         "has_mapping_metrics": capability_summary["has_mapping_metrics"],
         "has_transcript_quant": capability_summary["has_transcript_quant"],
         "has_gene_counts": capability_summary["has_gene_counts"],
         "outputs": outputs,
+        # Extended / compatibility fields
+        "elapsed_seconds": time.time() - start_time,
         "save_path": str(run_dir),
-        "quantifier": quantifier_name,
-        "quantifier_version": quantifier_version,
-        "quantifier_index_path": quantifier_index_path,
-        # v0.7.0 compatibility alias:
-        # app.py / 過去run表示が salmon_index_path をまだ参照する可能性があるため残す
-        "salmon_index_path": quantifier_index_path,
-        "tx2gene_path": tx2gene_path,
-        "annotation_gtf_path": annotation_gtf_path,
-        "aggregation_input_kind": run_result.get("aggregation_input_kind", "transcript_quant"),
+        "input_source": input_source,
+        "sample_metadata_columns": sample_metadata_columns,
+        "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
+        "sample_ids_aggregated": sample_ids_aggregated,
+        "salmon_index_path": str(quantifier_index_path) if quantifier_index_path else None,
         "strandedness": config_data.get("strandedness_prediction"),
         "threads": threads,
-        "log_summary": run_result["log_summary"]
+        "log_summary": run_result.get("log_summary", "")
     }
     
     disk_summary = run_summary.copy()

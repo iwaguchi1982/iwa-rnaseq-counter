@@ -9,6 +9,24 @@ from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_s
 
 logger = logging.getLogger(__name__)
 
+
+def _canonical_run_context_from_summary(run_summary: dict) -> dict:
+    """
+    v0.8.2 canonical run context.
+    新規コードはこのキー群を優先して読む。
+    """
+    return {
+        "quantifier": run_summary.get("quantifier", "unknown"),
+        "quantifier_version": run_summary.get("quantifier_version", "unknown"),
+        "aggregation_input_kind": run_summary.get(
+            "aggregation_input_kind",
+            "transcript_quant",
+        ),
+        "quantifier_index_path": run_summary.get("quantifier_index_path"),
+        "tx2gene_path": run_summary.get("tx2gene_path"),
+        "annotation_gtf_path": run_summary.get("annotation_gtf_path"),
+    }
+
 def build_matrix_spec_from_gui_result(
     run_dir: Path,
     run_summary: dict,
@@ -28,6 +46,8 @@ def build_matrix_spec_from_gui_result(
     run_name = run_summary.get("run_name", "UNKNOWN_RUN")
     matrix_id = f"MAT_{run_name}"
     
+    canonical_run_context = _canonical_run_context_from_summary(run_summary)
+
     metadata = {
         "producer_app": "iwa_rnaseq_counter",
         "producer_version": "0.3.5",
@@ -37,6 +57,7 @@ def build_matrix_spec_from_gui_result(
         "input_dir": run_summary.get("input_dir", ""),
         "feature_id_system_inferred": False,
         "feature_annotation_available": feature_annotation_available,
+        **canonical_run_context,
     }
     
     # Include output refs from GUI if needed
@@ -75,6 +96,8 @@ def build_execution_run_spec_from_gui_result(
     log_abs_path = (run_dir / log_rel_path).resolve()
     run_name = run_summary.get("run_name", f"RUN_GUI_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     
+    canonical_run_context = _canonical_run_context_from_summary(run_summary)
+
     parameters = {
         "run_origin": "gui",
         "input_mode": run_summary.get("discovery_mode", "unknown"),
@@ -87,12 +110,7 @@ def build_execution_run_spec_from_gui_result(
             else "Auto-detect"
         ),
         "threads": run_summary.get("threads", 4),
-        "quantifier": run_summary.get("quantifier", "salmon"),
-        "quantifier_version": run_summary.get("quantifier_version", "unknown"),
-        "aggregation_input_kind": run_summary.get(
-            "aggregation_input_kind",
-            "transcript_quant",
-        ),
+        **canonical_run_context,
     }
     
     sample_ids = run_summary.get("sample_ids_success", [])
