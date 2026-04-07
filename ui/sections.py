@@ -168,10 +168,8 @@ def render_sample_section(sample_df: pd.DataFrame) -> pd.DataFrame:
 
 def render_reference_section() -> dict[str, Any]:
     st.subheader("4. 参照設定")
-    salmon_index_path = st.text_input("Salmon index パス", value=st.session_state.salmon_index_path)
+    salmon_index_path = st.text_input("Quantifier index パス", value=st.session_state.salmon_index_path, help="Salmon / STAR / HISAT2 のインデックスを指定します。")
     tx2gene_path = st.text_input("tx2gene パス", value=st.session_state.tx2gene_path)
-    st.caption("v0.1.0 では Salmon のみ有効です。")
-    
     st.write("---")
     st.write("💡 Strandedness (鎖特異性) の自動推定")
     st.caption("サンプル一覧と Salmon index パスが揃っている場合、データをサンプリングして strandedness を推定できます。")
@@ -228,7 +226,7 @@ def render_run_section(
                 st.write(f"{'✅' if checks.get('strandedness') else '❌'} strandedness")
                 st.write(f"{'✅' if checks.get('output_dir') else '❌'} 出力先")
             
-            st.write(f"{'✅' if checks.get('salmon_binary') else '❌'} Salmon v1.10.1 推奨")
+            st.write(f"{'✅' if checks.get('quantifier_binary') else '❌'} Binary 依存関係")
 
             if not can_run:
                 st.error("実行前に上記の ❌ 項目を修正してください。")

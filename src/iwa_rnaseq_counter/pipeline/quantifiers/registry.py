@@ -3,13 +3,14 @@ from __future__ import annotations
 from .base import BaseQuantifier
 from .salmon import SalmonQuantifier
 from .star import StarQuantifier
+from .hisat2 import Hisat2Quantifier
 
 
 _QUANTIFIERS: dict[str, type[BaseQuantifier]] = {
     "salmon": SalmonQuantifier,
     "star": StarQuantifier,
-    # v0.7.2+
-    # "hisat2": Hisat2Quantifier,
+    "hisat2": Hisat2Quantifier,
+    # v0.7.3+
     # "kallisto": KallistoQuantifier,
 }
 

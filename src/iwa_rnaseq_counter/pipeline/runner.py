@@ -113,9 +113,11 @@ def run_counter_pipeline(
 
     quantifier_index = None
     tx2gene = None
+    annotation_gtf = None
     if assay_spec.reference_resources:
         quantifier_index = assay_spec.reference_resources.quantifier_index
         tx2gene = assay_spec.reference_resources.tx2gene_path
+        annotation_gtf = assay_spec.reference_resources.annotation_gtf_path
 
     if not quantifier_index:
         raise ValueError("quantifier_index is required in AssaySpec.reference_resources")
@@ -130,6 +132,7 @@ def run_counter_pipeline(
         reference_config={
             "quantifier_index": quantifier_index,
             "tx2gene_path": tx2gene,
+            "annotation_gtf_path": annotation_gtf,
         },
     )
 

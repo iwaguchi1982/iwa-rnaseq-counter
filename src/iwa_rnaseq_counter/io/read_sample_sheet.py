@@ -8,6 +8,7 @@ def read_sample_sheet(
     salmon_index_path: str | None = None,
     tx2gene_path: str | None = None,
     strandedness: str = "Auto-detect",
+    annotation_gtf_path: str | None = None,
 ) -> list[AssaySpec]:
     """
     Reads a sample sheet CSV and yields AssaySpec objects.
@@ -19,10 +20,11 @@ def read_sample_sheet(
         raise FileNotFoundError(f"Sample sheet not found: {sample_sheet_path}")
 
     ref_res = None
-    if salmon_index_path or tx2gene_path:
+    if salmon_index_path or tx2gene_path or annotation_gtf_path:
         ref_res = ReferenceResources(
             quantifier_index=salmon_index_path,
             tx2gene_path=tx2gene_path,
+            annotation_gtf_path=annotation_gtf_path,
         )
 
     assays: list[AssaySpec] = []

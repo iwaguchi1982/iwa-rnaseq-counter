@@ -68,6 +68,8 @@ def init_session_state() -> None:
         st.session_state.quantifier = "salmon"
     if "quantifier_index_path" not in st.session_state:
         st.session_state.quantifier_index_path = ""
+    if "annotation_gtf_path" not in st.session_state:
+        st.session_state.annotation_gtf_path = ""
 
 def run_app() -> None:
     st.set_page_config(page_title="iwa-rnaseq-counter", layout="wide")
@@ -238,23 +240,36 @@ def run_app() -> None:
 
             st.session_state.quantifier = st.selectbox(
                 "Quantifier",
-                options=["salmon", "star"],
-                index=0 if st.session_state.get("quantifier", "salmon") == "salmon" else 1,
-                help="v0.7.1 では salmon / star を選択できます。",
+                options=["salmon", "star", "hisat2"],
+                index=["salmon", "star", "hisat2"].index(
+                    st.session_state.get("quantifier", "salmon")
+                    if st.session_state.get("quantifier", "salmon") in ["salmon", "star", "hisat2"]
+                    else "salmon"
+                ),
+                help="v0.7.2 では salmon / star / hisat2 を選択できます。",
             )
 
             reference_values = render_reference_section()
 
-            # v0.7.1 最小版:
-            # 既存 UI.sections は salmon_index_path を返す前提のまま使い、
-            # app.py 側で generic key へ写像する。
+            # v0.7.2:
             st.session_state.quantifier_index_path = reference_values["salmon_index_path"]
             st.session_state.salmon_index_path = st.session_state.quantifier_index_path  # compatibility alias
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
 
+            if "annotation_gtf_path" not in st.session_state:
+                st.session_state.annotation_gtf_path = ""
+
+            if st.session_state.quantifier == "hisat2":
+                st.session_state.annotation_gtf_path = st.text_input(
+                    "Annotation GTF Path",
+                    value=st.session_state.annotation_gtf_path,
+                    help="HISAT2 gene-level counting で使用します。",
+                )
+
             index_validation = validate_quantifier_index(
                 st.session_state.quantifier_index_path,
                 quantifier=st.session_state.quantifier,
+                annotation_gtf_path=st.session_state.annotation_gtf_path,
             )
             tx2gene_validation = validate_tx2gene_file(st.session_state.tx2gene_path)
 
@@ -287,6 +302,7 @@ def run_app() -> None:
                 quantifier=st.session_state.quantifier,
                 quantifier_index_path=st.session_state.quantifier_index_path,
                 tx2gene_path=st.session_state.tx2gene_path,
+                annotation_gtf_path=st.session_state.annotation_gtf_path,
                 strandedness_mode=st.session_state.get("strandedness_mode", "Auto-detect"),
                 strandedness_result=st.session_state.get("strandedness_prediction"),
             )
@@ -316,6 +332,11 @@ def run_app() -> None:
                     # compatibility alias
                     "salmon_index_path": str(Path(st.session_state.quantifier_index_path).resolve()),
                     "tx2gene_path": str(Path(st.session_state.tx2gene_path).resolve()),
+                    "annotation_gtf_path": (
+                        str(Path(st.session_state.annotation_gtf_path).resolve())
+                        if st.session_state.get("annotation_gtf_path")
+                        else ""
+                    ),
                     "strandedness_mode": st.session_state.strandedness_mode,
                     "threads": st.session_state.threads,
                     "strandedness_prediction": st.session_state.strandedness_prediction,
@@ -349,6 +370,7 @@ def run_app() -> None:
                     # compatibility alias
                     {"parameter": "salmon_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
                     {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve())},
+                    {"parameter": "annotation_gtf_path", "value": str(Path(st.session_state.annotation_gtf_path).resolve()) if st.session_state.annotation_gtf_path else ""},
                     {"parameter": "strandedness_mode", "value": st.session_state.strandedness_mode},
                     {"parameter": "threads", "value": st.session_state.threads},
                     {"parameter": "started_at", "value": started_at_iso},

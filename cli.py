@@ -45,6 +45,7 @@ def main():
     p_run.add_argument("--quantifier", type=str, default="salmon")
     p_run.add_argument("--threads", type=int, default=4)
     p_run.add_argument("--dry-run", action="store_true")
+    p_run.add_argument("--annotation-gtf", type=Path, help="Annotation GTF path (required for hisat2)")
     p_run.add_argument("--log-level", type=str, default="INFO")
 
     p_batch = subparsers.add_parser("run-batch", help="Run multiple AssaySpecs from a sample sheet")
@@ -52,6 +53,7 @@ def main():
     p_batch.add_argument("--quantifier-index", type=Path, help="Generic quantifier index path (preferred)")
     p_batch.add_argument("--salmon-index", type=Path, help="Legacy alias for --quantifier-index")
     p_batch.add_argument("--tx2gene", required=True, type=Path)
+    p_batch.add_argument("--annotation-gtf", type=Path, help="Annotation GTF path (required for HISAT2)")
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
     p_batch.add_argument("--outdir", required=True, type=Path)
     p_batch.add_argument("--run-id", type=str)
@@ -110,12 +112,16 @@ def main():
         if quantifier_index_arg is None:
             parser.error("run-batch requires --quantifier-index (or legacy --salmon-index).")
 
+        if str(args.quantifier).strip().lower() == "hisat2" and args.annotation_gtf is None:
+            parser.error("run-batch with --quantifier hisat2 requires --annotation-gtf.")
+
         try:
             assay_specs = read_sample_sheet(
                 sample_sheet_path=args.sample_sheet,
                 quantifier_index_path=str(quantifier_index_arg),
                 tx2gene_path=str(args.tx2gene),
                 strandedness=args.strandedness,
+                annotation_gtf_path=str(args.annotation_gtf) if args.annotation_gtf else None,
             )
         except Exception as e:
             logger.error(f"Failed to read sample sheet: {e}")

@@ -105,13 +105,46 @@ def validate_star_index(star_index_path: str) -> dict:
     return _valid()
 
 
-def validate_quantifier_index(quantifier_index_path: str, quantifier: str = "salmon") -> dict:
+def validate_hisat2_index(hisat2_index_path: str) -> dict:
+    if not hisat2_index_path:
+        return _invalid("HISAT2 index が指定されていません。")
+
+    prefix = Path(hisat2_index_path)
+    parent = prefix.parent if prefix.parent != Path("") else Path(".")
+    stem = prefix.name
+
+    candidates = list(parent.glob(f"{stem}*.ht2")) + list(parent.glob(f"{stem}*.ht2l"))
+    if not candidates:
+        return _invalid(f"HISAT2 index prefix が有効ではありません: {hisat2_index_path}")
+
+    return _valid()
+
+
+def validate_annotation_gtf_file(annotation_gtf_path: str) -> dict:
+    if not annotation_gtf_path:
+        return _invalid("annotation GTF ファイルが指定されていません。")
+    path = Path(annotation_gtf_path)
+    if not path.exists() or not path.is_file():
+        return _invalid("annotation GTF ファイルが存在しません。")
+    return _valid()
+
+
+def validate_quantifier_index(
+    quantifier_index_path: str,
+    quantifier: str = "salmon",
+    annotation_gtf_path: str | None = None,
+) -> dict:
     q = str(quantifier or "salmon").strip().lower()
 
     if q == "salmon":
         return validate_salmon_index(quantifier_index_path)
     if q == "star":
         return validate_star_index(quantifier_index_path)
+    if q == "hisat2":
+        res = validate_hisat2_index(quantifier_index_path)
+        if not res["is_valid"]:
+            return res
+        return validate_annotation_gtf_file(annotation_gtf_path or "")
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 
@@ -257,6 +290,7 @@ def validate_run_conditions(
     strandedness_mode: str = "Auto-detect",
     strandedness_result: dict | None = None,
     quantifier: str = "salmon",
+    annotation_gtf_path: str | None = None,
     salmon_index_path: str | None = None,  # backward compatibility
 ) -> dict:
     resolved_quantifier_index = quantifier_index_path or salmon_index_path or ""
@@ -267,6 +301,7 @@ def validate_run_conditions(
         "quantifier_index": validate_quantifier_index(
             resolved_quantifier_index,
             quantifier=quantifier,
+            annotation_gtf_path=annotation_gtf_path,
         ),
         "tx2gene": validate_tx2gene_file(tx2gene_path or ""),
         "strandedness": validate_strandedness_selection(
@@ -309,6 +344,16 @@ def validate_star_binary() -> dict:
     return _valid()
 
 
+def validate_hisat2_binary() -> dict:
+    if shutil.which("hisat2") is None:
+        return _invalid("hisat2 コマンドが見つかりません。PATH を確認してください。")
+    if shutil.which("samtools") is None:
+        return _invalid("samtools コマンドが見つかりません。PATH を確認してください。")
+    if shutil.which("featureCounts") is None:
+        return _invalid("featureCounts コマンドが見つかりません。PATH を確認してください。")
+    return _valid()
+
+
 def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
     q = str(quantifier or "salmon").strip().lower()
 
@@ -316,6 +361,8 @@ def validate_quantifier_binary(quantifier: str = "salmon") -> dict:
         return validate_salmon_binary()
     if q == "star":
         return validate_star_binary()
+    if q == "hisat2":
+        return validate_hisat2_binary()
 
     return _invalid(f"未対応の quantifier です: {quantifier}")
 

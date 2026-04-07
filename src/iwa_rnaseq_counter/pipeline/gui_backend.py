@@ -97,6 +97,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     threads = config_data.get("threads", 4)
     analysis_name = config_data.get("analysis_name", "GUI_Run")
     quantifier_version = config_data.get("quantifier_version")
+    annotation_gtf_path = config_data.get("annotation_gtf_path")
     
     logger.info(f"Step 1: Running {quantifier_name} for all samples...")
     quant = get_quantifier(quantifier_name)
@@ -108,6 +109,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         reference_config={
             "quantifier_index": quantifier_index_path,
             "tx2gene_path": tx2gene_path,
+            "annotation_gtf_path": annotation_gtf_path,
         },
     )
 
@@ -193,6 +195,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         # app.py / 過去run表示が salmon_index_path をまだ参照する可能性があるため残す
         "salmon_index_path": quantifier_index_path,
         "tx2gene_path": tx2gene_path,
+        "annotation_gtf_path": annotation_gtf_path,
         "aggregation_input_kind": run_result.get("aggregation_input_kind", "transcript_quant"),
         "strandedness": config_data.get("strandedness_prediction"),
         "threads": threads,

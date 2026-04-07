@@ -19,6 +19,7 @@ class ReferenceResources:
     annotation_release: Optional[str] = None
     quantifier_index: Optional[str] = None
     tx2gene_path: Optional[str] = None
+    annotation_gtf_path: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ReferenceResources":
@@ -26,7 +27,8 @@ class ReferenceResources:
             genome_build=data.get("genome_build"),
             annotation_release=data.get("annotation_release"),
             quantifier_index=data.get("quantifier_index"),
-            tx2gene_path=data.get("tx2gene_path")
+            tx2gene_path=data.get("tx2gene_path"),
+            annotation_gtf_path=data.get("annotation_gtf_path")
         )
 
 @dataclass
