@@ -209,7 +209,7 @@ def render_reference_section(quantifier: str) -> dict[str, Any]:
         st.caption("サンプル一覧と quantifier index パスが揃っている場合、データをサンプリングして strandedness を推定できます。")
         estimate_strandedness = st.button("Strandedness を推定", use_container_width=False)
     else:
-        st.caption(f"v0.8.0 時点では strandedness 自動推定は {q if q != 'salmon' else ''} backend 未対応です。")
+        st.caption("現在、strandedness 自動推定は Salmon backend のみ対応です。その他 backend では手動指定してください。")
         estimate_strandedness = False
 
     return {
@@ -242,7 +242,7 @@ def render_run_section(
             f"*{strandedness_result.get('reason', '')}*"
         )
         if strandedness_result.get("probe_cmd"):
-            with st.expander("Probe 詳細 (Salmon)"):
+            with st.expander("Strandedness probe 詳細"):
                 st.code(" ".join(strandedness_result["probe_cmd"]), language="bash")
                 if strandedness_result.get("stderr"):
                     st.text_area("Probe Stderr (Detailed)", value=strandedness_result["stderr"], height=300, key="probe_stderr")
@@ -307,7 +307,7 @@ def render_result_section(
     run_summary: dict[str, Any] | None = None,
 ) -> None:
     st.subheader("6. 実行・結果")
-    st.caption("v0.1.7: Reporter 連携用出力標準化（manifest 生成）対応。")
+    st.caption("v0.8.4: backend-neutral result / summary 表示と軽い contract cleanup に対応。")
 
     if run_status == "idle":
         st.info("RUN ボタンを押すと解析が開始されます。")
@@ -338,12 +338,14 @@ def render_result_section(
         with c_ref:
             with st.container(border=True):
                 st.markdown("#### 参照設定・環境")
-                st.write(f"**Quantifier:** `{run_summary.get('quantifier', 'salmon')}`")
+                st.write(f"**Quantifier:** `{run_summary.get('quantifier', 'unknown')}`")
                 st.write(f"**Quantifier Version:** `{run_summary.get('quantifier_version', 'N/A')}`")
                 
                 stranded_info = run_summary.get('strandedness') or {}
                 st.write(f"**Inferred Lib Type:** `{stranded_info.get('mode', 'N/A')}`")
                 
+                # v0.8.x canonical key is quantifier_index_path.
+                # salmon_index_path is kept only as a compatibility alias for older runs.
                 index_name = Path(
                     run_summary.get("quantifier_index_path")
                     or run_summary.get("salmon_index_path", "")

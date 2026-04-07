@@ -259,7 +259,9 @@ def run_app() -> None:
 
             # v0.8.0 structural update:
             st.session_state.quantifier_index_path = reference_values["quantifier_index_path"]
-            st.session_state.salmon_index_path = st.session_state.quantifier_index_path  # compatibility alias
+            # v0.8.x canonical key is quantifier_index_path.
+            # Keep salmon_index_path only for backward compatibility with older flows.
+            st.session_state.salmon_index_path = st.session_state.quantifier_index_path
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
             st.session_state.annotation_gtf_path = reference_values["annotation_gtf_path"]
 
@@ -275,7 +277,7 @@ def run_app() -> None:
 
             if reference_values.get("estimate_strandedness"):
                 if st.session_state.quantifier != "salmon":
-                    st.info("v0.8.0 時点では strandedness 推定は Salmon backend のみ対応です。その他 backend では手動指定してください。")
+                    st.info("現在、strandedness 推定は Salmon backend のみ対応です。その他 backend では手動指定してください。")
                 elif (
                     st.session_state.get("sample_df") is not None
                     and not st.session_state.sample_df.empty
@@ -325,7 +327,7 @@ def run_app() -> None:
                     "output_dir": str(Path(st.session_state.output_dir).resolve()),
                     "quantifier": st.session_state.quantifier,
                     "quantifier_index_path": str(Path(st.session_state.quantifier_index_path).resolve()),
-                    # compatibility alias
+                    # backward compatibility alias for older runs / readers
                     "salmon_index_path": str(Path(st.session_state.quantifier_index_path).resolve()),
                     "tx2gene_path": str(Path(st.session_state.tx2gene_path).resolve()),
                     "annotation_gtf_path": (
@@ -363,7 +365,7 @@ def run_app() -> None:
                     {"parameter": "output_dir", "value": str(Path(st.session_state.output_dir).resolve())},
                     {"parameter": "quantifier", "value": st.session_state.quantifier},
                     {"parameter": "quantifier_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
-                    # compatibility alias
+                    # backward compatibility alias for older runs / readers
                     {"parameter": "salmon_index_path", "value": str(Path(st.session_state.quantifier_index_path).resolve())},
                     {"parameter": "tx2gene_path", "value": str(Path(st.session_state.tx2gene_path).resolve()) if st.session_state.tx2gene_path else ""},
                     {"parameter": "annotation_gtf_path", "value": str(Path(st.session_state.annotation_gtf_path).resolve()) if st.session_state.annotation_gtf_path else ""},

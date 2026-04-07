@@ -47,7 +47,7 @@ def _validate_reference_requirements_for_quantifier(
     context: str = "run",
 ) -> None:
     """
-    v0.8.3:
+    v0.8.4:
     assay / batch / GUI で揃えたい required reference ルールを
     CLI 側でも同じ形で使う。
     """
@@ -136,7 +136,7 @@ def main():
     p_batch.add_argument("--sample-sheet", required=True, type=Path)
     p_batch.add_argument("--quantifier-index", type=Path, help="Generic quantifier index path (preferred)")
     p_batch.add_argument("--salmon-index", type=Path, help="Legacy alias for --quantifier-index")
-    p_batch.add_argument("--tx2gene", type=Path)
+    p_batch.add_argument("--tx2gene", type=Path, help="tx2gene path (required for salmon / kallisto)")
     p_batch.add_argument("--annotation-gtf", type=Path, help="Annotation GTF path (required for HISAT2)")
     p_batch.add_argument("--strandedness", type=str, default="Auto-detect")
     p_batch.add_argument("--outdir", required=True, type=Path)
