@@ -166,18 +166,56 @@ def render_sample_section(sample_df: pd.DataFrame) -> pd.DataFrame:
     return apply_sample_table_edits(sample_df, edited_df)
 
 
-def render_reference_section() -> dict[str, Any]:
+def render_reference_section(quantifier: str) -> dict[str, Any]:
     st.subheader("4. 参照設定")
-    salmon_index_path = st.text_input("Quantifier index パス", value=st.session_state.salmon_index_path, help="Salmon / STAR / HISAT2 のインデックスを指定します。")
-    tx2gene_path = st.text_input("tx2gene パス", value=st.session_state.tx2gene_path)
+
+    q = str(quantifier or "salmon").strip().lower()
+
+    quantifier_index_path = st.text_input(
+        "Quantifier index パス",
+        value=st.session_state.get("quantifier_index_path", ""),
+        help="選択中 backend の index / prefix / index file を指定します。",
+    )
+
+    tx2gene_required = q in {"salmon", "kallisto"}
+    annotation_gtf_required = q == "hisat2"
+
+    if q == "salmon":
+        st.caption("Salmon: quantifier index と tx2gene が必要です。")
+    elif q == "star":
+        st.caption("STAR: genome index が必要です。tx2gene は任意ですが、annotation 用に保持できます。")
+    elif q == "hisat2":
+        st.caption("HISAT2: index prefix と annotation GTF が必要です。")
+    elif q == "kallisto":
+        st.caption("kallisto: index file と tx2gene が必要です。")
+
+    tx2gene_path = st.text_input(
+        f"tx2gene パス{' *' if tx2gene_required else ''}",
+        value=st.session_state.get("tx2gene_path", ""),
+        help="transcript-level backend から gene-level へ集約するときに使用します。",
+    )
+
+    annotation_gtf_path = st.text_input(
+        f"Annotation GTF パス{' *' if annotation_gtf_required else ''}",
+        value=st.session_state.get("annotation_gtf_path", ""),
+        help="HISAT2 gene-level counting で使用します。",
+        disabled=not annotation_gtf_required,
+    )
+
     st.write("---")
     st.write("💡 Strandedness (鎖特異性) の自動推定")
-    st.caption("サンプル一覧と Salmon index パスが揃っている場合、データをサンプリングして strandedness を推定できます。")
-    estimate_strandedness = st.button("Strandedness を推定", use_container_width=False)
-    
+
+    if q == "salmon":
+        st.caption("サンプル一覧と quantifier index パスが揃っている場合、データをサンプリングして strandedness を推定できます。")
+        estimate_strandedness = st.button("Strandedness を推定", use_container_width=False)
+    else:
+        st.caption(f"v0.8.0 時点では strandedness 自動推定は {q if q != 'salmon' else ''} backend 未対応です。")
+        estimate_strandedness = False
+
     return {
-        "salmon_index_path": salmon_index_path.strip(),
+        "quantifier_index_path": quantifier_index_path.strip(),
         "tx2gene_path": tx2gene_path.strip(),
+        "annotation_gtf_path": annotation_gtf_path.strip(),
         "estimate_strandedness": estimate_strandedness,
     }
 
@@ -220,8 +258,8 @@ def render_run_section(
                 st.write(f"{'✅' if checks.get('fastq_detected') else '❌'} 入力サンプル検出")
                 st.write(f"{'✅' if checks.get('sample_structure') else '❌'} サンプル不整合なし")
             with c2:
-                st.write(f"{'✅' if checks.get('salmon_index') else '❌'} Index 設定")
-                st.write(f"{'✅' if checks.get('tx2gene') else '❌'} tx2gene 設定")
+                st.write(f"{'✅' if checks.get('quantifier_index') else '❌'} Quantifier index")
+                st.write(f"{'✅' if checks.get('tx2gene') else '❌'} tx2gene")
             with c3:
                 st.write(f"{'✅' if checks.get('strandedness') else '❌'} strandedness")
                 st.write(f"{'✅' if checks.get('output_dir') else '❌'} 出力先")
@@ -288,8 +326,18 @@ def render_result_section(
                 stranded_info = run_summary.get('strandedness') or {}
                 st.write(f"**Inferred Lib Type:** `{stranded_info.get('mode', 'N/A')}`")
                 
-                st.write(f"**Index:** `{Path(run_summary.get('salmon_index_path', '')).name}`")
-                st.write(f"**tx2gene:** `{Path(run_summary.get('tx2gene_path', '')).name}`")
+                index_name = Path(
+                    run_summary.get("quantifier_index_path")
+                    or run_summary.get("salmon_index_path", "")
+                ).name
+                tx2gene_name = Path(run_summary.get("tx2gene_path", "")).name
+                annotation_gtf_path = run_summary.get("annotation_gtf_path", "")
+                annotation_gtf_name = Path(annotation_gtf_path).name if annotation_gtf_path else ""
+
+                st.write(f"**Index:** `{index_name or 'N/A'}`")
+                st.write(f"**tx2gene:** `{tx2gene_name or 'N/A'}`")
+                if annotation_gtf_name:
+                    st.write(f"**Annotation GTF:** `{annotation_gtf_name}`")
 
         with c_tbl:
             if "outputs" in run_summary:

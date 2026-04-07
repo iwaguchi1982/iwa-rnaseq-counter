@@ -70,6 +70,8 @@ def init_session_state() -> None:
         st.session_state.quantifier_index_path = ""
     if "annotation_gtf_path" not in st.session_state:
         st.session_state.annotation_gtf_path = ""
+    if "last_quantifier" not in st.session_state:
+        st.session_state.last_quantifier = st.session_state.get("quantifier", "salmon")
 
 def run_app() -> None:
     st.set_page_config(page_title="iwa-rnaseq-counter", layout="wide")
@@ -238,33 +240,29 @@ def run_app() -> None:
                 st.session_state.sample_df if st.session_state.sample_df is not None else pd.DataFrame()
             )
 
+            quantifier_options = ["salmon", "star", "hisat2", "kallisto"]
+            current_quantifier = st.session_state.get("quantifier", "salmon")
+            if current_quantifier not in quantifier_options:
+                current_quantifier = "salmon"
+
             st.session_state.quantifier = st.selectbox(
                 "Quantifier",
-                options=["salmon", "star", "hisat2"],
-                index=["salmon", "star", "hisat2"].index(
-                    st.session_state.get("quantifier", "salmon")
-                    if st.session_state.get("quantifier", "salmon") in ["salmon", "star", "hisat2"]
-                    else "salmon"
-                ),
-                help="v0.7.2 では salmon / star / hisat2 を選択できます。",
+                options=quantifier_options,
+                index=quantifier_options.index(current_quantifier),
+                help="salmon / star / hisat2 / kallisto を選択できます。",
             )
 
-            reference_values = render_reference_section()
+            if st.session_state.get("last_quantifier") != st.session_state.quantifier:
+                st.session_state.strandedness_prediction = None
+                st.session_state.last_quantifier = st.session_state.quantifier
 
-            # v0.7.2:
-            st.session_state.quantifier_index_path = reference_values["salmon_index_path"]
+            reference_values = render_reference_section(st.session_state.quantifier)
+
+            # v0.8.0 structural update:
+            st.session_state.quantifier_index_path = reference_values["quantifier_index_path"]
             st.session_state.salmon_index_path = st.session_state.quantifier_index_path  # compatibility alias
             st.session_state.tx2gene_path = reference_values["tx2gene_path"]
-
-            if "annotation_gtf_path" not in st.session_state:
-                st.session_state.annotation_gtf_path = ""
-
-            if st.session_state.quantifier == "hisat2":
-                st.session_state.annotation_gtf_path = st.text_input(
-                    "Annotation GTF Path",
-                    value=st.session_state.annotation_gtf_path,
-                    help="HISAT2 gene-level counting で使用します。",
-                )
+            st.session_state.annotation_gtf_path = reference_values["annotation_gtf_path"]
 
             index_validation = validate_quantifier_index(
                 st.session_state.quantifier_index_path,
@@ -279,7 +277,7 @@ def run_app() -> None:
 
             if reference_values.get("estimate_strandedness"):
                 if st.session_state.quantifier != "salmon":
-                    st.info("v0.7.1 では strandedness 推定は Salmon backend のみ対応です。STAR では手動指定してください。")
+                    st.info("v0.8.0 時点では strandedness 推定は Salmon backend のみ対応です。その他 backend では手動指定してください。")
                 elif (
                     st.session_state.get("sample_df") is not None
                     and not st.session_state.sample_df.empty
