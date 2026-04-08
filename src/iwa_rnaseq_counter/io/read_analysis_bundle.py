@@ -21,6 +21,27 @@ class AnalysisBundleContractInfo:
     compatibility_status: str
 
 
+@dataclass(frozen=True)
+class AnalysisBundleValidationIssue:
+    level: str  # "error" | "warning"
+    code: str
+    message: str
+    artifact_name: str | None = None
+    path: str | None = None
+
+
+@dataclass
+class AnalysisBundleValidationResult:
+    manifest_path: Path
+    bundle_root: Path
+    contract_info: AnalysisBundleContractInfo
+    is_valid: bool
+    error_count: int
+    warning_count: int
+    issues: list[AnalysisBundleValidationIssue]
+    resolved_artifacts: dict[str, str | None]
+
+
 @dataclass
 class AnalysisBundlePaths:
     manifest_path: Path
@@ -286,6 +307,248 @@ def _raise_if_unsupported_analysis_bundle_contract(
         f"contract_name={contract_info.contract_name!r}, "
         f"contract_version={contract_info.contract_version!r}, "
         f"bundle_kind={contract_info.bundle_kind!r}"
+    )
+
+
+def _append_issue(
+    issues: list[AnalysisBundleValidationIssue],
+    *,
+    level: str,
+    code: str,
+    message: str,
+    artifact_name: str | None = None,
+    path: str | None = None,
+) -> None:
+    issues.append(
+        AnalysisBundleValidationIssue(
+            level=level,
+            code=code,
+            message=message,
+            artifact_name=artifact_name,
+            path=path,
+        )
+    )
+
+
+def _validate_artifact_path(
+    manifest: dict[str, Any],
+    *,
+    artifact_name: str,
+    bundle_root: Path,
+    required: bool,
+    issues: list[AnalysisBundleValidationIssue],
+) -> Path | None:
+    try:
+        path = _resolve_artifact_path(
+            manifest,
+            artifact_name=artifact_name,
+            bundle_root=bundle_root,
+            required=False,
+        )
+    except Exception as e:
+        _append_issue(
+            issues,
+            level="error" if required else "warning",
+            code="artifact_path_resolution_failed",
+            message=str(e),
+            artifact_name=artifact_name,
+        )
+        return None
+
+    if path is None:
+        if required:
+            _append_issue(
+                issues,
+                level="error",
+                code="missing_required_artifact",
+                message=f"required artifact {artifact_name!r} is missing in manifest",
+                artifact_name=artifact_name,
+            )
+        return None
+
+    if not path.exists() or not path.is_file():
+        _append_issue(
+            issues,
+            level="error" if required else "warning",
+            code="artifact_file_not_found",
+            message=f"artifact file not found: {path}",
+            artifact_name=artifact_name,
+            path=str(path),
+        )
+        return None
+
+    return path
+
+
+def validate_analysis_bundle(
+    manifest_path: str | Path,
+    *,
+    validate_contract: bool = True,
+    validate_artifact_existence: bool = True,
+    validate_spec_shape: bool = True,
+) -> AnalysisBundleValidationResult:
+    """
+    analysis bundle の妥当性を網羅的に点検し、issue リストを返す。
+    read_analysis_bundle() とは異なり、エラーがあっても即座に例外を投げず、
+    可能な限り継続して問題点を収集する。
+    """
+    issues: list[AnalysisBundleValidationIssue] = []
+
+    # 1. Manifest / Path Resolution
+    try:
+        manifest_path_obj = _resolve_manifest_path(manifest_path)
+    except Exception as e:
+        _append_issue(issues, level="error", code="manifest_not_found", message=str(e))
+        # manifest が無いと何もできないのでここで最小の Result を返す
+        return AnalysisBundleValidationResult(
+            manifest_path=Path(manifest_path),
+            bundle_root=Path(manifest_path),
+            contract_info=AnalysisBundleContractInfo(
+                "", "", "", None, None, False, "manifest_missing"
+            ),
+            is_valid=False,
+            error_count=1,
+            warning_count=0,
+            issues=issues,
+            resolved_artifacts={},
+        )
+
+    try:
+        manifest = _read_json(manifest_path_obj)
+    except Exception as e:
+        _append_issue(issues, level="error", code="invalid_manifest_json", message=str(e))
+        return AnalysisBundleValidationResult(
+            manifest_path=manifest_path_obj,
+            bundle_root=manifest_path_obj.parent,
+            contract_info=AnalysisBundleContractInfo(
+                "", "", "", None, None, False, "invalid_json"
+            ),
+            is_valid=False,
+            error_count=1,
+            warning_count=0,
+            issues=issues,
+            resolved_artifacts={},
+        )
+
+    bundle_root = _resolve_bundle_root(manifest, manifest_path_obj)
+
+    # 2. Contract Check
+    contract_info = evaluate_analysis_bundle_contract(manifest)
+    if validate_contract and not contract_info.is_supported:
+        _append_issue(
+            issues,
+            level="error",
+            code=contract_info.compatibility_status,
+            message=f"unsupported analysis bundle contract: {contract_info.compatibility_status}",
+        )
+
+    # 3. Artifact Check
+    artifact_specs = [
+        ("matrix_spec", True),
+        ("execution_run_spec", True),
+        ("merged_matrix", True),
+        ("aligned_sample_metadata", True),
+        ("analysis_merge_summary", True),
+        ("build_analysis_matrix_log", True),
+        ("feature_annotation", False),
+    ]
+
+    resolved_artifacts: dict[str, str | None] = {}
+    resolved_paths: dict[str, Path | None] = {}
+
+    if validate_artifact_existence:
+        for artifact_name, required in artifact_specs:
+            path = _validate_artifact_path(
+                manifest,
+                artifact_name=artifact_name,
+                bundle_root=bundle_root,
+                required=required,
+                issues=issues,
+            )
+            resolved_artifacts[artifact_name] = str(path) if path else None
+            resolved_paths[artifact_name] = path
+
+    # 4. Spec Shape Check
+    if validate_spec_shape:
+        # MatrixSpec
+        p_matrix_spec = resolved_paths.get("matrix_spec")
+        if p_matrix_spec:
+            try:
+                read_matrix_spec(p_matrix_spec)
+            except Exception as e:
+                _append_issue(
+                    issues,
+                    level="error",
+                    code="invalid_matrix_spec",
+                    message=f"MatrixSpec validation failed: {e}",
+                    artifact_name="matrix_spec",
+                )
+
+        # ExecutionRunSpec
+        p_exec_spec = resolved_paths.get("execution_run_spec")
+        if p_exec_spec:
+            try:
+                _read_execution_run_spec(p_exec_spec)
+            except Exception as e:
+                _append_issue(
+                    issues,
+                    level="error",
+                    code="invalid_execution_run_spec",
+                    message=f"ExecutionRunSpec validation failed: {e}",
+                    artifact_name="execution_run_spec",
+                )
+
+        # Summary Schema Check
+        p_summary = resolved_paths.get("analysis_merge_summary")
+        if p_summary:
+            try:
+                summary_data = _read_json(p_summary)
+                if summary_data.get("schema_name") != "AnalysisMergeSummary":
+                    _append_issue(
+                        issues,
+                        level="warning",
+                        code="summary_schema_mismatch",
+                        message=(
+                            "AnalysisMergeSummary schema_name mismatch "
+                            f"(expected AnalysisMergeSummary, got {summary_data.get('schema_name')!r})"
+                        ),
+                        artifact_name="analysis_merge_summary",
+                    )
+            except Exception as e:
+                _append_issue(
+                    issues,
+                    level="error",
+                    code="invalid_summary_json",
+                    message=f"Summary JSON read failed: {e}",
+                    artifact_name="analysis_merge_summary",
+                )
+
+        # Tabular Data Check
+        p_metadata = resolved_paths.get("aligned_sample_metadata")
+        if p_metadata:
+            try:
+                _read_tabular_file(p_metadata)
+            except Exception as e:
+                _append_issue(
+                    issues,
+                    level="error",
+                    code="invalid_tabular_metadata",
+                    message=f"Tabular metadata read failed: {e}",
+                    artifact_name="aligned_sample_metadata",
+                )
+
+    error_count = sum(1 for x in issues if x.level == "error")
+    warning_count = sum(1 for x in issues if x.level == "warning")
+
+    return AnalysisBundleValidationResult(
+        manifest_path=manifest_path_obj,
+        bundle_root=bundle_root,
+        contract_info=contract_info,
+        is_valid=(error_count == 0),
+        error_count=error_count,
+        warning_count=warning_count,
+        issues=issues,
+        resolved_artifacts=resolved_artifacts,
     )
 
 

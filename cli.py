@@ -14,10 +14,10 @@ from iwa_rnaseq_counter.io.read_matrix_spec import read_matrix_spec
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 from iwa_rnaseq_counter.pipeline.runner import run_counter_pipeline
-from iwa_rnaseq_counter.pipeline.build_analysis_matrix import (
     build_analysis_matrix,
     preview_build_analysis_matrix,
 )
+from iwa_rnaseq_counter.io.read_analysis_bundle import validate_analysis_bundle
 
 
 def setup_logging(level: str, logfile: Path | None = None) -> None:
@@ -166,6 +166,11 @@ def main():
     p_gui.add_argument("--outdir", required=True, type=Path)
     p_gui.add_argument("--started-at", type=str, required=True)
     p_gui.add_argument("--log-level", type=str, default="INFO")
+
+    p_validate = subparsers.add_parser("validate-analysis-bundle", help="Validate an existing analysis bundle for integrity and contract compatibility")
+    p_validate.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
+    p_validate.add_argument("--json", action="store_true", help="Output validation results as JSON")
+    p_validate.add_argument("--log-level", type=str, default="INFO")
 
     args = parser.parse_args()
 
@@ -337,6 +342,46 @@ def main():
             run_gui_backend_pipeline(args.outdir, config_data, sample_df, args.started_at)
         except Exception as e:
             logger.error(f"GUI Backend pipeline failed: {e}")
+            sys.exit(1)
+
+    elif args.command == "validate-analysis-bundle":
+        setup_logging(args.log_level)
+        logger = logging.getLogger(__name__)
+
+        result = validate_analysis_bundle(args.manifest)
+
+        if args.json:
+            # We need a custom serializer for Path objects
+            def default_serializer(obj):
+                if isinstance(obj, Path):
+                    return str(obj)
+                if hasattr(obj, "__dict__"):
+                    return obj.__dict__
+                return str(obj)
+            
+            print(json.dumps(result, indent=2, ensure_ascii=False, default=default_serializer))
+        else:
+            status_str = "VALID" if result.is_valid else "INVALID"
+            logger.info("=" * 60)
+            logger.info(f"ANALYSIS BUNDLE VALIDATION: {status_str}")
+            logger.info("=" * 60)
+            logger.info(f"manifest: {result.manifest_path}")
+            logger.info(f"bundle_root: {result.bundle_root}")
+            contract = result.contract_info
+            logger.info(f"contract: {contract.contract_name} {contract.contract_version} ({contract.bundle_kind})")
+            logger.info(f"errors: {result.error_count}")
+            logger.info(f"warnings: {result.warning_count}")
+            
+            if result.issues:
+                logger.info("-" * 60)
+                for issue in result.issues:
+                    level_label = f"[{issue.level.upper()}]"
+                    artifact_label = f" ({issue.artifact_name})" if issue.artifact_name else ""
+                    logger.info(f"{level_label} {issue.code}{artifact_label}: {issue.message}")
+            
+            logger.info("=" * 60)
+
+        if not result.is_valid:
             sys.exit(1)
 
 
