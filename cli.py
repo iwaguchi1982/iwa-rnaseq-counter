@@ -18,7 +18,11 @@ from iwa_rnaseq_counter.pipeline.build_analysis_matrix import (
     build_analysis_matrix,
     preview_build_analysis_matrix,
 )
-from iwa_rnaseq_counter.io.read_analysis_bundle import validate_analysis_bundle
+from iwa_rnaseq_counter.io.read_analysis_bundle import (
+    validate_analysis_bundle,
+    read_analysis_bundle,
+    summarize_analysis_bundle_for_consumer,
+)
 
 
 def setup_logging(level: str, logfile: Path | None = None) -> None:
@@ -172,6 +176,10 @@ def main():
     p_validate.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
     p_validate.add_argument("--json", action="store_true", help="Output validation results as JSON")
     p_validate.add_argument("--log-level", type=str, default="INFO")
+    
+    p_inspect = subparsers.add_parser("inspect-analysis-bundle", help="Inspect an analysis bundle and print its summary as JSON")
+    p_inspect.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
+    p_inspect.add_argument("--log-level", type=str, default="WARNING")
 
     args = parser.parse_args()
 
@@ -383,6 +391,23 @@ def main():
             logger.info("=" * 60)
 
         if not result.is_valid:
+            sys.exit(1)
+
+    elif args.command == "inspect-analysis-bundle":
+        setup_logging(args.log_level)
+        
+        try:
+            bundle = read_analysis_bundle(args.manifest)
+            summary = summarize_analysis_bundle_for_consumer(bundle)
+            
+            def default_serializer(obj):
+                if isinstance(obj, Path):
+                    return str(obj)
+                return str(obj)
+            
+            print(json.dumps(summary, indent=2, ensure_ascii=False, default=default_serializer))
+        except Exception as e:
+            print(f"Error: Failed to inspect bundle: {e}", file=sys.stderr)
             sys.exit(1)
 
 

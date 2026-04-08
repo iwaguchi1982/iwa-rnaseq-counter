@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 
@@ -94,12 +94,13 @@ def _resolve_manifest_path(path_like: str | Path) -> Path:
 def _resolve_bundle_root(manifest: dict[str, Any], manifest_path: Path) -> Path:
     """
     manifest に bundle_root があればそれを優先。
-    無ければ results/analysis_bundle_manifest.json の 2 つ上を bundle root とみなす。
+    ただし "__BUNDLE_ROOT__" などの場合は manifest_path の 2 つ上を自動解決する。
     """
     bundle_root_raw = manifest.get("bundle_root")
-    if bundle_root_raw:
+    if bundle_root_raw and bundle_root_raw != "__BUNDLE_ROOT__":
         return Path(str(bundle_root_raw)).resolve()
 
+    # results/analysis_bundle_manifest.json の 2 つ上が bundle root
     return manifest_path.parent.parent.resolve()
 
 
@@ -152,9 +153,15 @@ def _resolve_artifact_path(
             )
         return None
 
-    path = Path(raw_path)
-    if not path.is_absolute():
-        path = bundle_root / path
+    # Handle __BUNDLE_ROOT__ placeholder
+    if "__BUNDLE_ROOT__" in raw_path:
+        # Use bundle_root string representation to avoid path object issues during replacement
+        resolved_str = raw_path.replace("__BUNDLE_ROOT__", str(bundle_root.resolve()))
+        path = Path(resolved_str)
+    else:
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = bundle_root / path
 
     return path.resolve()
 
@@ -687,3 +694,251 @@ def read_analysis_bundle(
         contract_info=contract_info,
         merged_matrix=merged_matrix,
     )
+
+
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
+
+
+def _sequence_or_empty(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, tuple):
+        return list(value)
+    return []
+
+
+def _get_nested(mapping: Mapping[str, Any] | None, *keys: str) -> Any:
+    current: Any = mapping
+    for key in keys:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+        if current is None:
+            return None
+    return current
+
+
+def _first_not_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _get_field(obj: Any, name: str, default: Any = None) -> Any:
+    if obj is None:
+        return default
+    if isinstance(obj, Mapping):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _bundle_manifest(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(bundle, AnalysisBundle):
+        return bundle.manifest
+    return _mapping_or_empty(bundle.get("manifest"))
+
+
+def _bundle_paths(bundle: AnalysisBundle | Mapping[str, Any]) -> AnalysisBundlePaths | None:
+    if isinstance(bundle, AnalysisBundle):
+        return bundle.paths
+    value = bundle.get("paths")
+    if isinstance(value, AnalysisBundlePaths):
+        return value
+    return None
+
+
+def _bundle_matrix_spec(bundle: AnalysisBundle | Mapping[str, Any]) -> MatrixSpec | Mapping[str, Any] | None:
+    if isinstance(bundle, AnalysisBundle):
+        return bundle.matrix_spec
+    return bundle.get("matrix_spec")
+
+
+def _bundle_execution_run_spec(
+    bundle: AnalysisBundle | Mapping[str, Any],
+) -> ExecutionRunSpec | Mapping[str, Any] | None:
+    if isinstance(bundle, AnalysisBundle):
+        return bundle.execution_run_spec
+    return bundle.get("execution_run_spec")
+
+
+def _bundle_analysis_merge_summary(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any]:
+    if isinstance(bundle, AnalysisBundle):
+        return bundle.analysis_merge_summary
+    return _mapping_or_empty(bundle.get("analysis_merge_summary"))
+
+
+def _build_matrix_shape(
+    *,
+    analysis_summary: Mapping[str, Any],
+    matrix_metadata: Mapping[str, Any],
+    execution_parameters: Mapping[str, Any],
+) -> dict[str, Any]:
+    summary_shape = _mapping_or_empty(analysis_summary.get("matrix_shape"))
+    if summary_shape:
+        return summary_shape
+
+    feature_count = _first_not_none(
+        matrix_metadata.get("feature_count"),
+        execution_parameters.get("feature_count"),
+        _get_nested(execution_parameters, "matrix_shape", "feature_count"),
+    )
+    sample_count = _first_not_none(
+        matrix_metadata.get("sample_count"),
+        execution_parameters.get("sample_count"),
+        _get_nested(execution_parameters, "matrix_shape", "sample_count"),
+    )
+
+    return {
+        "feature_count": feature_count,
+        "sample_count": sample_count,
+    }
+
+
+def _build_warning_summary(
+    *,
+    analysis_summary: Mapping[str, Any],
+    matrix_metadata: Mapping[str, Any],
+    execution_parameters: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    direct = _first_not_none(
+        analysis_summary.get("warning_summary"),
+        matrix_metadata.get("warning_summary"),
+        execution_parameters.get("warning_summary"),
+    )
+    if isinstance(direct, Mapping):
+        return dict(direct)
+
+    warning_count = execution_parameters.get("warning_count")
+    if warning_count is None:
+        return None
+
+    try:
+        normalized_count = int(warning_count)
+    except Exception:
+        normalized_count = warning_count
+
+    has_warnings = (
+        normalized_count > 0
+        if isinstance(normalized_count, int)
+        else bool(normalized_count)
+    )
+
+    return {
+        "has_warnings": has_warnings,
+        "warning_count": normalized_count,
+        "messages": [],
+    }
+
+
+def summarize_analysis_bundle_for_consumer(
+    bundle: AnalysisBundle | Mapping[str, Any],
+) -> dict[str, Any]:
+    """
+    downstream consumer が raw JSON の深いネストを直接たどらなくてもよいよう、
+    analysis bundle の主要 handoff field を正規化して 1 回で返す。
+
+    v0.11.1 の consumer-facing summary helper。
+    """
+    manifest = _bundle_manifest(bundle)
+    paths = _bundle_paths(bundle)
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    manifest_path = _first_not_none(
+        str(paths.manifest_path) if paths is not None else None,
+        manifest.get("manifest_path"),
+        matrix_metadata.get("analysis_bundle_manifest_path"),
+        execution_parameters.get("analysis_bundle_manifest_path"),
+    )
+
+    matrix_id = _first_not_none(
+        _get_field(matrix_spec, "matrix_id"),
+        analysis_summary.get("matrix_id"),
+    )
+
+    run_id = _first_not_none(
+        _get_field(execution_run_spec, "run_id"),
+        manifest.get("run_id"),
+    )
+
+    matrix_shape = _build_matrix_shape(
+        analysis_summary=analysis_summary,
+        matrix_metadata=matrix_metadata,
+        execution_parameters=execution_parameters,
+    )
+
+    sample_axis = _first_not_none(
+        analysis_summary.get("sample_axis"),
+        matrix_metadata.get("sample_axis_kind"),
+        execution_parameters.get("sample_axis"),
+    )
+
+    feature_id_system = _first_not_none(
+        analysis_summary.get("feature_id_system"),
+        _get_field(matrix_spec, "feature_id_system"),
+        matrix_metadata.get("feature_id_system"),
+    )
+
+    column_order_specimen_ids = _first_not_none(
+        analysis_summary.get("column_order_specimen_ids"),
+        matrix_metadata.get("column_order_specimen_ids"),
+        execution_parameters.get("column_order_specimen_ids"),
+        [],
+    )
+    column_order_specimen_ids = _sequence_or_empty(column_order_specimen_ids)
+
+    source_quantifier_summary = _first_not_none(
+        analysis_summary.get("source_quantifier_summary"),
+        execution_parameters.get("source_quantifier_summary"),
+        {},
+    )
+    source_quantifier_summary = _mapping_or_empty(source_quantifier_summary)
+
+    feature_annotation_status = _first_not_none(
+        analysis_summary.get("feature_annotation_status"),
+        matrix_metadata.get("feature_annotation_status"),
+        execution_parameters.get("feature_annotation_status"),
+    )
+    if isinstance(feature_annotation_status, Mapping):
+        feature_annotation_status = dict(feature_annotation_status)
+
+    sample_metadata_alignment_status = _first_not_none(
+        analysis_summary.get("sample_metadata_alignment_status"),
+        analysis_summary.get("sample_metadata_alignment"),
+        execution_parameters.get("sample_metadata_alignment_status"),
+    )
+    if isinstance(sample_metadata_alignment_status, Mapping):
+        sample_metadata_alignment_status = dict(sample_metadata_alignment_status)
+
+    warning_summary = _build_warning_summary(
+        analysis_summary=analysis_summary,
+        matrix_metadata=matrix_metadata,
+        execution_parameters=execution_parameters,
+    )
+
+    return {
+        "contract_name": manifest.get("contract_name"),
+        "contract_version": manifest.get("contract_version"),
+        "bundle_kind": manifest.get("bundle_kind"),
+        "producer": manifest.get("producer"),
+        "producer_version": manifest.get("producer_version"),
+        "matrix_id": matrix_id,
+        "run_id": run_id,
+        "matrix_shape": matrix_shape,
+        "sample_axis": sample_axis,
+        "feature_id_system": feature_id_system,
+        "column_order_specimen_ids": column_order_specimen_ids,
+        "source_quantifier_summary": source_quantifier_summary,
+        "feature_annotation_status": feature_annotation_status,
+        "sample_metadata_alignment_status": sample_metadata_alignment_status,
+        "warning_summary": warning_summary,
+        "manifest_path": manifest_path,
+    }
