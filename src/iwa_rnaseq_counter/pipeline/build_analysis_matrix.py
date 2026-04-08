@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,52 @@ def _unique_preserve_order(values: list) -> list:
         seen.add(key)
         out.append(v)
     return out
+
+
+RECOMMENDED_SAMPLE_METADATA_COLUMNS = (
+    "subject_id",
+    "condition",
+    "group",
+    "batch",
+)
+
+
+def _inspect_recommended_sample_metadata_columns(
+    columns: Sequence[str] | pd.Index | None,
+) -> dict[str, Any]:
+    """
+    sample metadata の推奨列充足状況を軽く点検する。
+    欠けていても error にはせず、warning / summary 用の情報として返す。
+    """
+    recommended = list(RECOMMENDED_SAMPLE_METADATA_COLUMNS)
+
+    if columns is None:
+        return {
+            "status": "not_available",
+            "recommended": recommended,
+            "present": [],
+            "missing": recommended,
+            "available_columns": [],
+        }
+
+    available_columns = [str(col) for col in list(columns)]
+    present = [col for col in recommended if col in available_columns]
+    missing = [col for col in recommended if col not in available_columns]
+
+    if not missing:
+        status = "complete"
+    elif present:
+        status = "partial"
+    else:
+        status = "missing"
+
+    return {
+        "status": status,
+        "recommended": recommended,
+        "present": present,
+        "missing": missing,
+        "available_columns": available_columns,
+    }
 
 
 def _normalize_optional_path(value: str | None) -> str | None:
@@ -357,6 +404,7 @@ def _validate_and_align_sample_metadata(
     if df.empty:
         raise ValueError("sample metadata is empty")
 
+    recommended_columns = _inspect_recommended_sample_metadata_columns(df.columns)
     id_col = _resolve_sample_metadata_id_column(df)
 
     df = df.copy()
@@ -403,6 +451,7 @@ def _validate_and_align_sample_metadata(
         "extra_metadata_ids": extra_metadata_ids,
         "duplicate_ids": duplicate_ids,
         "aligned_columns": [str(c) for c in aligned_df.columns],
+        "recommended_columns": recommended_columns,
     }
 
 
@@ -452,6 +501,16 @@ def _collect_analysis_merge_warnings(
     if len(source_quantifiers) > 1:
         warnings.append(
             f"multiple quantifiers are mixed in analysis merge: {source_quantifiers}"
+        )
+
+    recommended_columns = sample_metadata_alignment.get("recommended_columns", {}) or {}
+    missing_recommended_columns = recommended_columns.get("missing", []) or []
+    recommended_status = recommended_columns.get("status")
+
+    if recommended_status != "not_available" and missing_recommended_columns:
+        warnings.append(
+            "sample metadata is missing recommended columns: "
+            + ", ".join(missing_recommended_columns)
         )
 
     return warnings
@@ -538,6 +597,7 @@ def _build_analysis_merge_summary(
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
+        "sample_metadata_recommended_columns": sample_metadata_alignment.get("recommended_columns", {}),
         "warnings": warnings,
         "input_refs": input_refs,
         "output_refs": output_refs,
