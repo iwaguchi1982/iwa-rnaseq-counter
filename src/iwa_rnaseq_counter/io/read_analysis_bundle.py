@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,30 +6,32 @@ from typing import Any
 import pandas as pd
 
 from ..io.read_matrix_spec import read_matrix_spec
+from ..models.execution_run import ExecutionRunSpec
+from ..models.matrix import MatrixSpec
 
 
 @dataclass
 class AnalysisBundlePaths:
-    manifest_path: str
-    matrix_spec_path: str | None
-    execution_run_spec_path: str | None
-    merged_matrix_path: str | None
-    sample_metadata_input_path: str | None
-    aligned_sample_metadata_path: str | None
-    analysis_merge_summary_path: str | None
-    log_path: str | None
-    feature_annotation_path: str | None
+    manifest_path: Path
+    bundle_root: Path
+    matrix_spec_path: Path
+    execution_run_spec_path: Path
+    merged_matrix_path: Path
+    aligned_sample_metadata_path: Path
+    analysis_merge_summary_path: Path
+    build_analysis_matrix_log_path: Path
+    feature_annotation_path: Path | None = None
 
 
 @dataclass
 class AnalysisBundle:
     manifest: dict[str, Any]
     paths: AnalysisBundlePaths
-    matrix_spec: Any | None
-    execution_run_spec: dict[str, Any] | None
-    analysis_merge_summary: dict[str, Any] | None
-    aligned_sample_metadata: pd.DataFrame | None
-    merged_matrix: pd.DataFrame | None
+    matrix_spec: MatrixSpec
+    execution_run_spec: ExecutionRunSpec
+    analysis_merge_summary: dict[str, Any]
+    aligned_sample_metadata: pd.DataFrame
+    merged_matrix: pd.DataFrame | None = None
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -39,151 +39,243 @@ def _read_json(path: Path) -> dict[str, Any]:
         return json.load(f)
 
 
-def _resolve_manifest_path(path_or_dir: str | Path) -> Path:
+def _resolve_manifest_path(path_like: str | Path) -> Path:
     """
-    analysis_bundle_manifest.json 自体、または bundle root directory を受け取る。
+    受け口は 2 通り許容する:
+      1. results/analysis_bundle_manifest.json
+      2. analysis bundle の outdir
     """
-    p = Path(path_or_dir)
+    path = Path(path_like)
 
-    if p.is_file():
-        return p.resolve()
+    if path.is_dir():
+        manifest_path = path / "results" / "analysis_bundle_manifest.json"
+    else:
+        manifest_path = path
 
-    manifest_path = p / "results" / "analysis_bundle_manifest.json"
-    if manifest_path.exists():
-        return manifest_path.resolve()
+    if not manifest_path.exists() or not manifest_path.is_file():
+        raise FileNotFoundError(f"analysis bundle manifest not found: {manifest_path}")
 
-    raise FileNotFoundError(
-        "analysis bundle manifest not found. "
-        f"Expected file or bundle root containing results/analysis_bundle_manifest.json: {p}"
+    return manifest_path.resolve()
+
+
+def _resolve_bundle_root(manifest: dict[str, Any], manifest_path: Path) -> Path:
+    """
+    manifest に bundle_root があればそれを優先。
+    無ければ results/analysis_bundle_manifest.json の 2 つ上を bundle root とみなす。
+    """
+    bundle_root_raw = manifest.get("bundle_root")
+    if bundle_root_raw:
+        return Path(str(bundle_root_raw)).resolve()
+
+    return manifest_path.parent.parent.resolve()
+
+
+def _extract_artifact_relpath(
+    manifest: dict[str, Any],
+    artifact_name: str,
+) -> str | None:
+    """
+    manifest["artifacts"][name] は以下のどちらでも受ける:
+      - {"path": "...", ...}
+      - "..."
+    """
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        raise ValueError("analysis bundle manifest must contain dict field 'artifacts'")
+
+    entry = artifacts.get(artifact_name)
+    if entry is None:
+        return None
+
+    if isinstance(entry, str):
+        value = entry.strip()
+        return value or None
+
+    if isinstance(entry, dict):
+        raw = entry.get("path")
+        if raw is None:
+            return None
+        value = str(raw).strip()
+        return value or None
+
+    raise TypeError(
+        f"artifact entry for {artifact_name!r} must be dict or str, got {type(entry).__name__}"
     )
 
 
-def _resolve_path_value(value: str | None, manifest_path: Path) -> str | None:
-    if value is None:
+def _resolve_artifact_path(
+    manifest: dict[str, Any],
+    *,
+    artifact_name: str,
+    bundle_root: Path,
+    required: bool = True,
+) -> Path | None:
+    raw_path = _extract_artifact_relpath(manifest, artifact_name)
+
+    if raw_path is None:
+        if required:
+            raise ValueError(
+                f"required artifact {artifact_name!r} is missing in analysis bundle manifest"
+            )
         return None
 
-    raw = str(value).strip()
-    if not raw:
-        return None
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = bundle_root / path
 
-    p = Path(raw)
-    if p.is_absolute():
-        return str(p.resolve())
-
-    # relative path は manifest file 基準で解決
-    return str((manifest_path.parent / p).resolve())
+    return path.resolve()
 
 
-def _resolve_bundle_paths(manifest: dict[str, Any], manifest_path: Path) -> AnalysisBundlePaths:
-    paths = manifest.get("paths", {})
+def _read_execution_run_spec(file_path: str | Path) -> ExecutionRunSpec:
+    """
+    現状の repo では ExecutionRunSpec に from_dict() がないため、
+    bundle loader 側で最小の reader を持つ。
+    """
+    data = _read_json(Path(file_path))
+
+    schema_name = data.get("$schema_name", data.get("schema_name"))
+    if schema_name != "ExecutionRunSpec":
+        raise ValueError(f"Expected ExecutionRunSpec, got {schema_name!r}")
+
+    return ExecutionRunSpec(
+        schema_name=data.get("$schema_name", data.get("schema_name", "")),
+        schema_version=data.get("$schema_version", data.get("schema_version", "")),
+        run_id=data.get("run_id", ""),
+        app_name=data.get("app_name", ""),
+        app_version=data.get("app_version", ""),
+        started_at=data.get("started_at", ""),
+        input_refs=data.get("input_refs", []) or [],
+        output_refs=data.get("output_refs", []) or [],
+        parameters=data.get("parameters", {}) or {},
+        execution_backend=data.get("execution_backend"),
+        finished_at=data.get("finished_at"),
+        status=data.get("status", "pending"),
+        log_path=data.get("log_path", ""),
+        metadata=data.get("metadata", {}) or {},
+        overlay=data.get("overlay", {}) or {},
+    )
+
+
+def _read_tabular_file(path: Path) -> pd.DataFrame:
+    suffix = path.suffix.lower()
+
+    if suffix in {".tsv", ".txt"}:
+        df = pd.read_csv(path, sep="\t")
+        if len(df.columns) == 1:
+            return pd.read_csv(path)
+        return df
+
+    if suffix == ".csv":
+        df = pd.read_csv(path)
+        if len(df.columns) == 1:
+            return pd.read_csv(path, sep="\t")
+        return df
+
+    try:
+        df = pd.read_csv(path)
+        if len(df.columns) > 1:
+            return df
+    except Exception:
+        pass
+
+    return pd.read_csv(path, sep="\t")
+
+
+def resolve_analysis_bundle_paths(
+    manifest_path: str | Path,
+) -> AnalysisBundlePaths:
+    manifest_path_obj = _resolve_manifest_path(manifest_path)
+    manifest = _read_json(manifest_path_obj)
+
+    schema_name = manifest.get("schema_name")
+    if schema_name and schema_name != "AnalysisBundleManifest":
+        raise ValueError(f"Expected AnalysisBundleManifest, got {schema_name!r}")
+
+    bundle_root = _resolve_bundle_root(manifest, manifest_path_obj)
 
     return AnalysisBundlePaths(
-        manifest_path=str(manifest_path.resolve()),
-        matrix_spec_path=_resolve_path_value(paths.get("matrix_spec"), manifest_path),
-        execution_run_spec_path=_resolve_path_value(paths.get("execution_run_spec"), manifest_path),
-        merged_matrix_path=_resolve_path_value(paths.get("merged_matrix"), manifest_path),
-        sample_metadata_input_path=_resolve_path_value(paths.get("sample_metadata_input"), manifest_path),
-        aligned_sample_metadata_path=_resolve_path_value(paths.get("aligned_sample_metadata"), manifest_path),
-        analysis_merge_summary_path=_resolve_path_value(paths.get("analysis_merge_summary"), manifest_path),
-        log_path=_resolve_path_value(paths.get("log"), manifest_path),
-        feature_annotation_path=_resolve_path_value(paths.get("feature_annotation"), manifest_path),
+        manifest_path=manifest_path_obj,
+        bundle_root=bundle_root,
+        matrix_spec_path=_resolve_artifact_path(
+            manifest, artifact_name="matrix_spec", bundle_root=bundle_root, required=True
+        ),
+        execution_run_spec_path=_resolve_artifact_path(
+            manifest,
+            artifact_name="execution_run_spec",
+            bundle_root=bundle_root,
+            required=True,
+        ),
+        merged_matrix_path=_resolve_artifact_path(
+            manifest, artifact_name="merged_matrix", bundle_root=bundle_root, required=True
+        ),
+        aligned_sample_metadata_path=_resolve_artifact_path(
+            manifest,
+            artifact_name="aligned_sample_metadata",
+            bundle_root=bundle_root,
+            required=True,
+        ),
+        analysis_merge_summary_path=_resolve_artifact_path(
+            manifest,
+            artifact_name="analysis_merge_summary",
+            bundle_root=bundle_root,
+            required=True,
+        ),
+        build_analysis_matrix_log_path=_resolve_artifact_path(
+            manifest,
+            artifact_name="build_analysis_matrix_log",
+            bundle_root=bundle_root,
+            required=True,
+        ),
+        feature_annotation_path=_resolve_artifact_path(
+            manifest,
+            artifact_name="feature_annotation",
+            bundle_root=bundle_root,
+            required=False,
+        ),
     )
-
-
-def _read_execution_run_spec_dict(path_value: str | None) -> dict[str, Any] | None:
-    if not path_value:
-        return None
-
-    path = Path(path_value)
-    if not path.exists():
-        return None
-
-    return _read_json(path)
-
-
-def _read_analysis_merge_summary_dict(path_value: str | None) -> dict[str, Any] | None:
-    if not path_value:
-        return None
-
-    path = Path(path_value)
-    if not path.exists():
-        return None
-
-    return _read_json(path)
-
-
-def _read_optional_table(path_value: str | None, sep: str = "\t") -> pd.DataFrame | None:
-    if not path_value:
-        return None
-
-    path = Path(path_value)
-    if not path.exists():
-        return None
-
-    return pd.read_csv(path, sep=sep)
 
 
 def read_analysis_bundle(
-    path_or_dir: str | Path,
+    manifest_path: str | Path,
     *,
-    load_matrix_spec: bool = True,
-    load_execution_run_spec: bool = True,
-    load_analysis_merge_summary: bool = True,
-    load_aligned_sample_metadata: bool = True,
     load_merged_matrix: bool = False,
 ) -> AnalysisBundle:
     """
-    v0.9.1-2:
-    analysis bundle manifest から主要成果物をまとめて読む。
+    analysis_bundle_manifest.json を入口に、
+    downstream が必要とする analysis handoff artifact 群をまとめて読む。
 
     Parameters
     ----------
-    path_or_dir:
-        analysis_bundle_manifest.json そのもの、
-        または bundle root directory.
-    load_matrix_spec:
-        matrix.spec.json を読むか
-    load_execution_run_spec:
-        execution-run.spec.json を読むか
-    load_analysis_merge_summary:
-        analysis_merge_summary.json を読むか
-    load_aligned_sample_metadata:
-        aligned_sample_metadata.tsv を読むか
+    manifest_path:
+        以下のどちらでもよい:
+        - results/analysis_bundle_manifest.json
+        - analysis bundle の outdir
     load_merged_matrix:
-        merged_gene_numreads.tsv を読むか（重いので default False）
+        True の時だけ merged matrix を読み込む。
+        count matrix は重くなりうるため default=False。
+
+    Returns
+    -------
+    AnalysisBundle
     """
-    manifest_path = _resolve_manifest_path(path_or_dir)
-    manifest = _read_json(manifest_path)
-    paths = _resolve_bundle_paths(manifest, manifest_path)
+    paths = resolve_analysis_bundle_paths(manifest_path)
+    manifest = _read_json(paths.manifest_path)
 
-    matrix_spec_obj = None
-    if load_matrix_spec and paths.matrix_spec_path:
-        matrix_spec_path = Path(paths.matrix_spec_path)
-        if matrix_spec_path.exists():
-            matrix_spec_obj = read_matrix_spec(matrix_spec_path)
+    matrix_spec = read_matrix_spec(paths.matrix_spec_path)
+    execution_run_spec = _read_execution_run_spec(paths.execution_run_spec_path)
+    analysis_merge_summary = _read_json(paths.analysis_merge_summary_path)
+    aligned_sample_metadata = _read_tabular_file(paths.aligned_sample_metadata_path)
 
-    execution_run_spec_obj = None
-    if load_execution_run_spec:
-        execution_run_spec_obj = _read_execution_run_spec_dict(paths.execution_run_spec_path)
-
-    analysis_merge_summary_obj = None
-    if load_analysis_merge_summary:
-        analysis_merge_summary_obj = _read_analysis_merge_summary_dict(paths.analysis_merge_summary_path)
-
-    aligned_sample_metadata_df = None
-    if load_aligned_sample_metadata:
-        aligned_sample_metadata_df = _read_optional_table(paths.aligned_sample_metadata_path, sep="\t")
-
-    merged_matrix_df = None
+    merged_matrix = None
     if load_merged_matrix:
-        merged_matrix_df = _read_optional_table(paths.merged_matrix_path, sep="\t")
+        merged_matrix = pd.read_csv(paths.merged_matrix_path, sep="\t", index_col=0)
 
     return AnalysisBundle(
         manifest=manifest,
         paths=paths,
-        matrix_spec=matrix_spec_obj,
-        execution_run_spec=execution_run_spec_obj,
-        analysis_merge_summary=analysis_merge_summary_obj,
-        aligned_sample_metadata=aligned_sample_metadata_df,
-        merged_matrix=merged_matrix_df,
+        matrix_spec=matrix_spec,
+        execution_run_spec=execution_run_spec,
+        analysis_merge_summary=analysis_merge_summary,
+        aligned_sample_metadata=aligned_sample_metadata,
+        merged_matrix=merged_matrix,
     )
