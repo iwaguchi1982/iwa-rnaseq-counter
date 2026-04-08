@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -13,7 +14,10 @@ from iwa_rnaseq_counter.io.read_matrix_spec import read_matrix_spec
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 from iwa_rnaseq_counter.pipeline.runner import run_counter_pipeline
-from iwa_rnaseq_counter.pipeline.build_analysis_matrix import build_analysis_matrix
+from iwa_rnaseq_counter.pipeline.build_analysis_matrix import (
+    build_analysis_matrix,
+    preview_build_analysis_matrix,
+)
 
 
 def setup_logging(level: str, logfile: Path | None = None) -> None:
@@ -153,6 +157,7 @@ def main():
     p_merge.add_argument("--outdir", required=True, type=Path)
     p_merge.add_argument("--matrix-id", required=True, type=str)
     p_merge.add_argument("--run-id", type=str)
+    p_merge.add_argument("--dry-run", action="store_true")
     p_merge.add_argument("--log-level", type=str, default="INFO")
 
     p_gui = subparsers.add_parser("run-gui-backend", help="Execute the monolithic GUI pipeline via CLI for job running")
@@ -262,6 +267,15 @@ def main():
         logger = logging.getLogger(__name__)
 
         matrix_specs = [read_matrix_spec(p) for p in args.matrix_spec]
+
+        if args.dry_run:
+            preview = preview_build_analysis_matrix(
+                matrix_specs=matrix_specs,
+                sample_metadata_path=args.sample_metadata,
+            )
+            logger.info("build-analysis-matrix dry-run completed")
+            logger.info(json.dumps(preview, indent=2, ensure_ascii=False))
+            return
 
         matrix_spec, exec_spec = build_analysis_matrix(
             matrix_specs=matrix_specs,
