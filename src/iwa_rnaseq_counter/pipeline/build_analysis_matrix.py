@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -61,6 +62,68 @@ def _normalize_optional_path(value: str | None) -> str | None:
         return None
     s = str(value).strip()
     return s if s else None
+
+
+def _inspect_feature_annotation_file(path_value: str | None) -> dict[str, Any]:
+    """
+    v0.9.0-2:
+    feature_annotation.tsv を analysis handoff 用 artifact として使ってよいかを軽く検査する。
+    標準列: feature_id, gene_symbol
+    """
+    normalized = _normalize_optional_path(path_value)
+    if not normalized:
+        return {
+            "path": None,
+            "exists": False,
+            "readable": False,
+            "is_usable": False,
+            "columns": [],
+            "row_count": 0,
+            "status": "missing",
+            "reason": "path_missing",
+        }
+
+    path = Path(normalized)
+    if not path.exists() or not path.is_file():
+        return {
+            "path": str(path),
+            "exists": False,
+            "readable": False,
+            "is_usable": False,
+            "columns": [],
+            "row_count": 0,
+            "status": "missing",
+            "reason": "file_not_found",
+        }
+
+    try:
+        df = pd.read_csv(path, sep="\t")
+    except Exception as e:
+        return {
+            "path": str(path),
+            "exists": True,
+            "readable": False,
+            "is_usable": False,
+            "columns": [],
+            "row_count": 0,
+            "status": "invalid",
+            "reason": f"read_error:{e}",
+        }
+
+    columns = [str(c) for c in df.columns]
+    required_columns = {"feature_id", "gene_symbol"}
+    has_required_columns = required_columns.issubset(set(columns))
+
+    return {
+        "path": str(path),
+        "exists": True,
+        "readable": True,
+        "is_usable": has_required_columns,
+        "columns": columns,
+        "row_count": int(len(df)),
+        "status": "usable" if has_required_columns else "invalid",
+        "reason": "ok" if has_required_columns else "missing_required_columns",
+    }
 
 
 def _validate_mergeable_matrix_specs(matrix_specs: list[MatrixSpec]) -> None:
