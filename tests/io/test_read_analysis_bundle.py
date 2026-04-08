@@ -27,6 +27,17 @@ def test_read_analysis_bundle_from_valid_fixture(tmp_path):
     # By default merged matrix is not loaded
     assert bundle.merged_matrix is None
 
+def test_read_analysis_bundle_from_manifest_path(tmp_path):
+    src = _fixture_root() / "valid_minimal_bundle"
+    bundle_dir = materialize_analysis_bundle_fixture(src, tmp_path / "valid_bundle")
+
+    manifest_path = bundle_dir / "results" / "analysis_bundle_manifest.json"
+    bundle = read_analysis_bundle(manifest_path)
+
+    assert bundle.contract_info.is_supported is True
+    assert bundle.matrix_spec.matrix_id == "TEST_ANALYSIS_MATRIX"
+    assert bundle.execution_run_spec.run_id == "TEST_RUN_001"
+
 def test_read_analysis_bundle_loads_merged_matrix_when_requested(tmp_path):
     src = _fixture_root() / "valid_minimal_bundle"
     bundle_dir = materialize_analysis_bundle_fixture(src, tmp_path / "valid_bundle")
@@ -43,5 +54,6 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
         test_read_analysis_bundle_from_valid_fixture(tmp_path)
+        test_read_analysis_bundle_from_manifest_path(tmp_path)
         test_read_analysis_bundle_loads_merged_matrix_when_requested(tmp_path)
     print("test_read_analysis_bundle: ALL PASSED")

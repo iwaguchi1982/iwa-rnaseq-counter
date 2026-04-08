@@ -1,0 +1,43 @@
+{
+  "$schema_name": "MatrixSpec",
+  "$schema_version": "0.1.0",
+  "matrix_id": "TEST_ANALYSIS_MATRIX",
+  "matrix_scope": "analysis",
+  "matrix_kind": "count_matrix",
+  "feature_type": "gene",
+  "value_type": "integer",
+  "normalization": "raw",
+  "feature_id_system": "ensembl_gene_id",
+  "sample_axis": "specimen",
+  "matrix_path": "__BUNDLE_ROOT__/counts/merged_gene_numreads.tsv",
+  "feature_annotation_path": null,
+  "source_assay_ids": ["ASSAY_001", "ASSAY_002"],
+  "source_specimen_ids": ["SP001", "SP002"],
+  "source_subject_ids": ["SUB001", "SUB002"],
+  "metadata": {
+    "producer_app": "iwa_rnaseq_counter",
+    "producer_version": "0.10.4-test",
+    "merge_strategy": "column_bind_by_feature_id",
+    "column_order_specimen_ids": ["SP001", "SP002"],
+    "sample_count": 2,
+    "feature_count": 3,
+    "sample_axis_kind": "specimen",
+    "analysis_bundle_manifest_path": "__BUNDLE_ROOT__/results/analysis_bundle_manifest.json",
+    "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
+    "sample_ids": ["SP001", "SP002"],
+    "source_matrix_count": 2,
+    "source_quantifiers": ["salmon"],
+    "source_quantifier_versions": ["1.10.0"],
+    "feature_annotation_consensus_status": "missing_or_invalid",
+    "feature_annotation_consensus_path": null,
+    "feature_annotation_is_usable": false,
+    "warning_summary": {
+      "count": 1,
+      "has_warnings": true,
+      "messages": [
+        "feature_annotation_consensus_status=missing_or_invalid"
+      ]
+    }
+  },
+  "overlay": {}
+}

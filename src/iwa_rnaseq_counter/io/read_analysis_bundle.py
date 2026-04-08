@@ -474,7 +474,18 @@ def validate_analysis_bundle(
         p_matrix_spec = resolved_paths.get("matrix_spec")
         if p_matrix_spec:
             try:
-                read_matrix_spec(p_matrix_spec)
+                ms = read_matrix_spec(p_matrix_spec)
+                # COLLECT INTERNAL WARNINGS
+                ws = ms.metadata.get("warning_summary")
+                if isinstance(ws, dict) and ws.get("has_warnings"):
+                    for msg in ws.get("messages", []):
+                        _append_issue(
+                            issues,
+                            level="warning",
+                            code="internal_warning_matrix_spec",
+                            message=f"MatrixSpec has internal warning: {msg}",
+                            artifact_name="matrix_spec",
+                        )
             except Exception as e:
                 _append_issue(
                     issues,
@@ -488,7 +499,18 @@ def validate_analysis_bundle(
         p_exec_spec = resolved_paths.get("execution_run_spec")
         if p_exec_spec:
             try:
-                _read_execution_run_spec(p_exec_spec)
+                es = _read_execution_run_spec(p_exec_spec)
+                # COLLECT INTERNAL WARNINGS
+                ws = es.parameters.get("warning_summary")
+                if isinstance(ws, dict) and ws.get("has_warnings"):
+                    for msg in ws.get("messages", []):
+                        _append_issue(
+                            issues,
+                            level="warning",
+                            code="internal_warning_execution_run_spec",
+                            message=f"ExecutionRunSpec has internal warning: {msg}",
+                            artifact_name="execution_run_spec",
+                        )
             except Exception as e:
                 _append_issue(
                     issues,
@@ -514,6 +536,17 @@ def validate_analysis_bundle(
                         ),
                         artifact_name="analysis_merge_summary",
                     )
+                # COLLECT INTERNAL WARNINGS
+                ws = summary_data.get("warning_summary")
+                if isinstance(ws, dict) and ws.get("has_warnings"):
+                    for msg in ws.get("messages", []):
+                        _append_issue(
+                            issues,
+                            level="warning",
+                            code="internal_warning_summary",
+                            message=f"AnalysisMergeSummary has internal warning: {msg}",
+                            artifact_name="analysis_merge_summary",
+                        )
             except Exception as e:
                 _append_issue(
                     issues,

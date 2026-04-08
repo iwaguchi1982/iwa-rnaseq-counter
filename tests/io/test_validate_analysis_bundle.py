@@ -52,6 +52,26 @@ def test_validate_analysis_bundle_detects_unsupported_contract(tmp_path):
     assert result.is_valid is False
     assert any(issue.code == "unsupported_contract_major" for issue in result.issues)
 
+def test_validate_analysis_bundle_from_manifest_path(tmp_path):
+    src = _fixture_root() / "valid_minimal_bundle"
+    bundle_dir = materialize_analysis_bundle_fixture(src, tmp_path / "valid_bundle")
+
+    manifest_path = bundle_dir / "results" / "analysis_bundle_manifest.json"
+    result = validate_analysis_bundle(manifest_path)
+
+    assert result.is_valid is True
+    assert result.error_count == 0
+    assert result.contract_info.is_supported is True
+
+def test_validate_analysis_bundle_returns_warning_for_warning_fixture(tmp_path):
+    src = _fixture_root() / "valid_with_warnings"
+    bundle_dir = materialize_analysis_bundle_fixture(src, tmp_path / "warning_bundle")
+
+    result = validate_analysis_bundle(bundle_dir)
+
+    assert result.is_valid is True
+    assert result.warning_count > 0
+
 if __name__ == "__main__":
     from pathlib import Path
     import tempfile
@@ -60,4 +80,6 @@ if __name__ == "__main__":
         test_validate_analysis_bundle_returns_valid_for_valid_fixture(tmp_path)
         test_validate_analysis_bundle_detects_missing_required_artifact(tmp_path)
         test_validate_analysis_bundle_detects_unsupported_contract(tmp_path)
+        test_validate_analysis_bundle_from_manifest_path(tmp_path)
+        test_validate_analysis_bundle_returns_warning_for_warning_fixture(tmp_path)
     print("test_validate_analysis_bundle: ALL PASSED")
