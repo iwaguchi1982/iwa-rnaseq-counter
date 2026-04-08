@@ -629,6 +629,10 @@ def _build_analysis_merge_summary(
     input_refs: list[str],
     bundle_manifest_path: Path | None = None,
     analysis_bundle: dict[str, Any] | None = None,
+    matrix_shape: dict[str, int] | None = None,
+    sample_axis: str | None = None,
+    feature_id_system: str | None = None,
+    column_order_specimen_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     producer_version = _get_counter_producer_version()
 
@@ -644,28 +648,33 @@ def _build_analysis_merge_summary(
             "producer_version": producer_version,
         },
         "matrix_id": matrix_id,
+        "matrix_shape": matrix_shape or {},
+        "sample_axis": sample_axis or "specimen",
+        "feature_id_system": feature_id_system or "unknown",
+        "column_order_specimen_ids": column_order_specimen_ids or [],
         "matrix_path": str(matrix_path.resolve()),
         "sample_metadata_path": str(sample_metadata_path.resolve()),
         "aligned_sample_metadata_path": sample_metadata_alignment.get("aligned_sample_metadata_path"),
         "run_id": run_id,
         "source_matrix_count": merge_provenance["source_matrix_count"],
-        "source_quantifiers": merge_provenance["source_quantifiers"],
-        "source_quantifier_versions": merge_provenance["source_quantifier_versions"],
-        "source_aggregation_input_kinds": merge_provenance["source_aggregation_input_kinds"],
-        "feature_annotation_consensus_status": merge_provenance["feature_annotation_consensus_status"],
-        "feature_annotation_consensus_path": merge_provenance["feature_annotation_consensus_path"],
-        "feature_annotation_consensus_reason": merge_provenance["feature_annotation_consensus_reason"],
-        "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
+        "source_quantifier_summary": {
+            "values": merge_provenance["source_quantifiers"],
+            "is_mixed": len(merge_provenance["source_quantifiers"]) > 1,
+        },
+        "feature_annotation_status": {
+            "consensus_status": merge_provenance["feature_annotation_consensus_status"],
+            "is_usable": merge_provenance["feature_annotation_is_usable"],
+            "path": merge_provenance["feature_annotation_consensus_path"],
+        },
         "sample_metadata_alignment_status": sample_metadata_alignment["status"],
         "sample_metadata_id_column": sample_metadata_alignment["id_column"],
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
-        "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
-        "sample_metadata_recommended_columns": sample_metadata_alignment.get(
-            "recommended_columns", {}
-        ),
-        "warning_count": len(warnings),
-        "warnings": warnings,
+        "warning_summary": {
+            "count": len(warnings),
+            "has_warnings": len(warnings) > 0,
+            "messages": warnings,
+        },
         "analysis_bundle_manifest_path": (
             str(bundle_manifest_path.resolve()) if bundle_manifest_path else None
         ),
@@ -962,10 +971,20 @@ def build_analysis_matrix(
     merged_df.to_csv(matrix_path, sep="\t")
 
     producer_version = _get_counter_producer_version()
+    
+    matrix_shape = {
+        "feature_count": int(merged_df.shape[0]),
+        "sample_count": int(merged_df.shape[1]),
+    }
+    
     analysis_metadata = {
         "producer_app": "iwa_rnaseq_counter",
         "producer_version": producer_version,
         "merge_strategy": "column_bind_by_feature_id",
+        "column_order_specimen_ids": specimen_ids_in_order,
+        "sample_count": matrix_shape["sample_count"],
+        "feature_count": matrix_shape["feature_count"],
+        "sample_axis_kind": "specimen",
         "sample_metadata_path": str(sample_metadata_path.resolve()),
         "aligned_sample_metadata_path": sample_metadata_alignment["aligned_sample_metadata_path"],
         "sample_metadata_alignment_status": sample_metadata_alignment["status"],
@@ -973,18 +992,13 @@ def build_analysis_matrix(
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
-        "sample_metadata_aligned_columns": sample_metadata_alignment["aligned_columns"],
-        "sample_ids": source_specimen_ids,
+        "sample_ids": source_specimen_ids,  # Keep for compatibility
         "source_matrix_count": merge_provenance["source_matrix_count"],
         "source_quantifiers": merge_provenance["source_quantifiers"],
         "source_quantifier_versions": merge_provenance["source_quantifier_versions"],
-        "source_aggregation_input_kinds": merge_provenance["source_aggregation_input_kinds"],
         "feature_annotation_consensus_status": merge_provenance["feature_annotation_consensus_status"],
         "feature_annotation_consensus_path": merge_provenance["feature_annotation_consensus_path"],
-        "feature_annotation_consensus_reason": merge_provenance["feature_annotation_consensus_reason"],
         "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
-        "source_feature_annotation_inspections": merge_provenance["source_feature_annotation_inspections"],
-        "source_matrix_contexts": merge_provenance["source_matrix_contexts"],
         "analysis_bundle_manifest_path": str(manifest_path.resolve()),
         "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
         "warnings": warnings,
@@ -1025,27 +1039,21 @@ def build_analysis_matrix(
         app_version=producer_version,
         started_at=started_at,
         input_refs=[spec.matrix_id for spec in matrix_specs],
-        output_refs=[analysis_spec.matrix_id],
+        output_refs=[analysis_spec.matrix_id, str(manifest_path.resolve())],
         parameters={
-            "merge_strategy": "column_bind_by_feature_id",
-            "sample_metadata_path": str(sample_metadata_path.resolve()),
-            "aligned_sample_metadata_path": sample_metadata_alignment["aligned_sample_metadata_path"],
+            "matrix_shape": matrix_shape,
+            "sample_count": matrix_shape["sample_count"],
+            "feature_count": matrix_shape["feature_count"],
+            "sample_axis": "specimen",
+            "warning_count": len(warnings),
             "sample_metadata_alignment_status": sample_metadata_alignment["status"],
-            "sample_metadata_id_column": sample_metadata_alignment["id_column"],
-            "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
-            "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
-            "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
-            "source_matrix_count": merge_provenance["source_matrix_count"],
-            "source_quantifiers": merge_provenance["source_quantifiers"],
-            "source_quantifier_versions": merge_provenance["source_quantifier_versions"],
-            "source_aggregation_input_kinds": merge_provenance["source_aggregation_input_kinds"],
-            "feature_annotation_consensus_status": merge_provenance["feature_annotation_consensus_status"],
-            "feature_annotation_consensus_path": merge_provenance["feature_annotation_consensus_path"],
-            "feature_annotation_consensus_reason": merge_provenance["feature_annotation_consensus_reason"],
-            "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
+            "feature_annotation_status": merge_provenance["feature_annotation_consensus_status"],
+            "source_quantifier_summary": {
+                "values": merge_provenance["source_quantifiers"],
+                "is_mixed": len(merge_provenance["source_quantifiers"]) > 1,
+            },
             "analysis_bundle_manifest_path": str(manifest_path.resolve()),
             "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
-            "warnings": warnings,
         },
         execution_backend="local",
         finished_at=finished_at,
@@ -1072,6 +1080,10 @@ def build_analysis_matrix(
         output_refs=run_spec.output_refs,
         bundle_manifest_path=manifest_path,
         analysis_bundle=analysis_bundle,
+        matrix_shape=matrix_shape,
+        sample_axis="specimen",
+        feature_id_system=matrix_specs[0].feature_id_system,
+        column_order_specimen_ids=specimen_ids_in_order,
     )
 
     summary_path = results_dir / "analysis_merge_summary.json"
