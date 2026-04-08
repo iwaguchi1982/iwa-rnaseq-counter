@@ -581,56 +581,102 @@ def _write_analysis_merge_log(
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _bundle_ref_path(path_value: str | Path | None, *, bundle_root: Path) -> str | None:
+    """
+    manifest 用の path 正規化。
+    bundle_root 配下なら relative path、それ以外は absolute path で返す。
+    """
+    if path_value is None:
+        return None
+
+    path = path_value if isinstance(path_value, Path) else Path(str(path_value))
+    if not path.is_absolute():
+        path = bundle_root / path
+
+    resolved = path.resolve()
+    bundle_root_resolved = bundle_root.resolve()
+
+    try:
+        return str(resolved.relative_to(bundle_root_resolved))
+    except ValueError:
+        return str(resolved)
+
+
 def _build_analysis_bundle_manifest(
     *,
     outdir: Path,
-    analysis_spec: MatrixSpec,
-    run_spec: ExecutionRunSpec,
-    sample_metadata_path: Path,
+    matrix_id: str,
+    run_id: str,
+    matrix_spec_path: Path,
+    execution_run_spec_path: Path,
+    merged_matrix_path: Path,
     aligned_sample_metadata_path: str | None,
     analysis_merge_summary_path: Path,
+    build_analysis_matrix_log_path: Path,
+    feature_annotation_path: str | None,
 ) -> dict[str, Any]:
     """
+    analysis handoff artifact 群を 1 枚の入口から辿れるようにする manifest を作る。
     v0.9.1-1:
-    analysis merge の主要成果物を 1 枚の manifest から辿れるようにする。
+      - build_analysis_matrix.py 側で manifest を出力
+      - spec JSON 自体は現行どおり CLI 側で保存される前提のため、
+        ここでは existence ではなく artifact ref registry として path を束ねる
     """
-    results_dir = outdir / "results"
-    specs_dir = outdir / "specs"
+    bundle_root = outdir.resolve()
 
-    manifest = {
-        "schema_name": "AnalysisBundleManifest",
-        "schema_version": "0.1.0",
-        "bundle_kind": "analysis_matrix_bundle",
-        "bundle_id": analysis_spec.matrix_id,
-        "matrix_id": analysis_spec.matrix_id,
-        "run_id": run_spec.run_id,
-        "producer_app": "iwa_rnaseq_counter",
-        "producer_version": "0.3.5",
-        "matrix_scope": analysis_spec.matrix_scope,
-        "feature_type": analysis_spec.feature_type,
-        "sample_axis": analysis_spec.sample_axis,
-        "paths": {
-            "matrix_spec": str((specs_dir / "matrix.spec.json").resolve()),
-            "execution_run_spec": str((specs_dir / "execution-run.spec.json").resolve()),
-            "merged_matrix": str(Path(analysis_spec.matrix_path).resolve()),
-            "sample_metadata_input": str(sample_metadata_path.resolve()),
-            "aligned_sample_metadata": aligned_sample_metadata_path,
-            "analysis_merge_summary": str(analysis_merge_summary_path.resolve()),
-            "log": run_spec.log_path,
-            "feature_annotation": analysis_spec.feature_annotation_path,
+    artifacts = {
+        "matrix_spec": {
+            "path": _bundle_ref_path(matrix_spec_path, bundle_root=bundle_root),
+            "kind": "spec",
+            "schema_name": "MatrixSpec",
+            "required": True,
         },
-        "bundle_summary": {
-            "source_matrix_count": (analysis_spec.metadata or {}).get("source_matrix_count"),
-            "source_quantifiers": (analysis_spec.metadata or {}).get("source_quantifiers", []),
-            "source_quantifier_versions": (analysis_spec.metadata or {}).get("source_quantifier_versions", []),
-            "source_aggregation_input_kinds": (analysis_spec.metadata or {}).get("source_aggregation_input_kinds", []),
-            "feature_annotation_consensus_status": (analysis_spec.metadata or {}).get("feature_annotation_consensus_status"),
-            "sample_metadata_alignment_status": (analysis_spec.metadata or {}).get("sample_metadata_alignment_status"),
-            "warnings": (analysis_spec.metadata or {}).get("warnings", []),
+        "execution_run_spec": {
+            "path": _bundle_ref_path(execution_run_spec_path, bundle_root=bundle_root),
+            "kind": "spec",
+            "schema_name": "ExecutionRunSpec",
+            "required": True,
+        },
+        "merged_matrix": {
+            "path": _bundle_ref_path(merged_matrix_path, bundle_root=bundle_root),
+            "kind": "matrix",
+            "required": True,
+        },
+        "aligned_sample_metadata": {
+            "path": _bundle_ref_path(aligned_sample_metadata_path, bundle_root=bundle_root),
+            "kind": "metadata",
+            "required": True,
+        },
+        "analysis_merge_summary": {
+            "path": _bundle_ref_path(analysis_merge_summary_path, bundle_root=bundle_root),
+            "kind": "summary",
+            "required": True,
+        },
+        "build_analysis_matrix_log": {
+            "path": _bundle_ref_path(build_analysis_matrix_log_path, bundle_root=bundle_root),
+            "kind": "log",
+            "required": True,
         },
     }
 
-    return manifest
+    if feature_annotation_path:
+        artifacts["feature_annotation"] = {
+            "path": _bundle_ref_path(feature_annotation_path, bundle_root=bundle_root),
+            "kind": "annotation",
+            "required": False,
+        }
+
+    return {
+        "schema_name": "AnalysisBundleManifest",
+        "schema_version": "0.1.0",
+        "bundle_kind": "analysis_bundle",
+        "bundle_scope": "analysis",
+        "matrix_id": matrix_id,
+        "run_id": run_id,
+        "bundle_root": str(bundle_root),
+        "created_at": datetime.now(timezone.utc).astimezone().isoformat(),
+        "artifacts": artifacts,
+    }
 
 
 def _write_analysis_bundle_manifest(manifest_path: Path, manifest: dict[str, Any]) -> None:
@@ -795,9 +841,12 @@ def build_analysis_matrix(
         output_refs=run_spec.output_refs,
     )
 
-    analysis_merge_summary_path = results_dir / "analysis_merge_summary.json"
+    summary_path = results_dir / "analysis_merge_summary.json"
+    manifest_path = results_dir / "analysis_bundle_manifest.json"
+    matrix_spec_path = specs_dir / "matrix.spec.json"
+    execution_run_spec_path = specs_dir / "execution-run.spec.json"
 
-    _write_analysis_merge_summary(analysis_merge_summary_path, summary)
+    _write_analysis_merge_summary(summary_path, summary)
     _write_analysis_merge_log(
         log_path,
         matrix_id=matrix_id,
@@ -810,15 +859,16 @@ def build_analysis_matrix(
 
     manifest = _build_analysis_bundle_manifest(
         outdir=outdir,
-        analysis_spec=analysis_spec,
-        run_spec=run_spec,
-        sample_metadata_path=sample_metadata_path,
+        matrix_id=matrix_id,
+        run_id=run_spec.run_id,
+        matrix_spec_path=matrix_spec_path,
+        execution_run_spec_path=execution_run_spec_path,
+        merged_matrix_path=matrix_path,
         aligned_sample_metadata_path=sample_metadata_alignment["aligned_sample_metadata_path"],
-        analysis_merge_summary_path=analysis_merge_summary_path,
+        analysis_merge_summary_path=summary_path,
+        build_analysis_matrix_log_path=log_path,
+        feature_annotation_path=analysis_spec.feature_annotation_path,
     )
-    _write_analysis_bundle_manifest(
-        results_dir / "analysis_bundle_manifest.json",
-        manifest,
-    )
+    _write_analysis_bundle_manifest(manifest_path, manifest)
 
     return analysis_spec, run_spec
