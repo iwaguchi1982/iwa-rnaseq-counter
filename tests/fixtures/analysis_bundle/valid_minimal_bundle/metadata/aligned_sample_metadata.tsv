@@ -1,0 +1,3 @@
+specimen_id	subject_id	condition	group	batch
+SP001	SUB001	control	A	B1
+SP002	SUB002	treated	B	B1

@@ -1001,7 +1001,11 @@ def build_analysis_matrix(
         "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
         "analysis_bundle_manifest_path": str(manifest_path.resolve()),
         "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
-        "warnings": warnings,
+        "warning_summary": {
+            "count": len(warnings),
+            "has_warnings": len(warnings) > 0,
+            "messages": warnings,
+        },
     }
 
     analysis_spec = MatrixSpec(
@@ -1046,6 +1050,11 @@ def build_analysis_matrix(
             "feature_count": matrix_shape["feature_count"],
             "sample_axis": "specimen",
             "warning_count": len(warnings),
+            "warning_summary": {
+                "count": len(warnings),
+                "has_warnings": len(warnings) > 0,
+                "messages": warnings,
+            },
             "sample_metadata_alignment_status": sample_metadata_alignment["status"],
             "feature_annotation_status": merge_provenance["feature_annotation_consensus_status"],
             "source_quantifier_summary": {

@@ -1,0 +1,42 @@
+{
+  "$schema_name": "ExecutionRunSpec",
+  "$schema_version": "0.1.0",
+  "run_id": "TEST_RUN_001",
+  "app_name": "iwa_rnaseq_counter",
+  "app_version": "0.10.4-test",
+  "started_at": "2026-04-08T12:00:00+09:00",
+  "input_refs": ["ASSAY_MATRIX_001", "ASSAY_MATRIX_002"],
+  "output_refs": [
+    "TEST_ANALYSIS_MATRIX",
+    "__BUNDLE_ROOT__/results/analysis_bundle_manifest.json"
+  ],
+  "parameters": {
+    "matrix_shape": {
+      "feature_count": 3,
+      "sample_count": 2
+    },
+    "sample_count": 2,
+    "feature_count": 3,
+    "sample_axis": "specimen",
+    "warning_count": 0,
+    "sample_metadata_alignment_status": "aligned",
+    "feature_annotation_status": "missing_or_invalid",
+    "source_quantifier_summary": {
+      "values": ["salmon"],
+      "is_mixed": false
+    },
+    "warning_summary": {
+      "count": 0,
+      "has_warnings": false,
+      "messages": []
+    },
+    "analysis_bundle_manifest_path": "__BUNDLE_ROOT__/results/analysis_bundle_manifest.json",
+    "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest"
+  },
+  "execution_backend": "local",
+  "finished_at": "2026-04-08T12:00:03+09:00",
+  "status": "completed",
+  "log_path": "__BUNDLE_ROOT__/logs/build_analysis_matrix.log",
+  "metadata": {},
+  "overlay": {}
+}
