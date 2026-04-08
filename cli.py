@@ -277,14 +277,15 @@ def main():
                 matrix_id=args.matrix_id,
                 run_id=args.run_id,
             )
-            logger.info("build-analysis-matrix dry-run completed")
-            logger.info(
-                "planned analysis bundle entrypoint: %s",
-                preview.get("analysis_bundle", {}).get(
-                    "entrypoint_path",
-                    str(manifest_path.resolve()),
-                ),
-            )
+            bundle_contract = preview.get("analysis_bundle", {}).get("contract", {})
+            if bundle_contract:
+                logger.info("analysis bundle contract preview:")
+                logger.info(f"  contract_name: {bundle_contract.get('contract_name')}")
+                logger.info(f"  contract_version: {bundle_contract.get('contract_version')}")
+                logger.info(f"  bundle_kind: {bundle_contract.get('bundle_kind')}")
+                logger.info(f"  producer: {bundle_contract.get('producer')}")
+                logger.info(f"  producer_version: {bundle_contract.get('producer_version')}")
+
             logger.info(json.dumps(preview, indent=2, ensure_ascii=False))
             return
 
@@ -301,6 +302,7 @@ def main():
 
         logger.info("build-analysis-matrix completed")
         logger.info("analysis bundle entrypoint: %s", str(manifest_path.resolve()))
+        logger.info("analysis bundle contract: analysis_bundle@1.x (rna_seq_analysis_bundle)")
         logger.info("matrix spec: %s", str((args.outdir / "specs" / "matrix.spec.json").resolve()))
         logger.info(
             "execution run spec: %s",
@@ -312,7 +314,6 @@ def main():
         setup_logging(args.log_level, args.outdir / "logs" / "run.log")
         logger = logging.getLogger(__name__)
         
-        import json
         import pandas as pd
         from iwa_rnaseq_counter.pipeline.gui_backend import run_gui_backend_pipeline
         

@@ -1,0 +1,123 @@
+2026-04-08 19:52:56,198 [INFO] build-analysis-matrix dry-run completed
+2026-04-08 19:52:56,199 [INFO] planned analysis bundle entrypoint: /home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_dry_run_v0.9/results/analysis_bundle_manifest.json
+2026-04-08 19:52:56,199 [INFO] {
+  "status": "preview_ok",
+  "source_matrix_count": 2,
+  "source_specimen_ids": [
+    "SMP01",
+    "SMP02"
+  ],
+  "source_quantifiers": [],
+  "source_quantifier_versions": [],
+  "source_aggregation_input_kinds": [],
+  "feature_annotation_consensus_status": "missing_or_invalid",
+  "feature_annotation_consensus_path": null,
+  "feature_annotation_consensus_reason": {
+    "missing_count": 2,
+    "invalid_count": 0,
+    "usable_count": 0,
+    "existing_paths": [],
+    "usable_paths": [],
+    "usable_column_signatures": []
+  },
+  "feature_annotation_is_usable": false,
+  "sample_metadata_id_column": "specimen_id",
+  "sample_metadata_alignment_status": "aligned",
+  "sample_metadata_row_count_input": 2,
+  "sample_metadata_row_count_aligned": 2,
+  "sample_metadata_extra_ids": [],
+  "sample_metadata_recommended_columns": {
+    "status": "partial",
+    "recommended": [
+      "subject_id",
+      "condition",
+      "group",
+      "batch"
+    ],
+    "present": [
+      "subject_id",
+      "condition",
+      "group"
+    ],
+    "missing": [
+      "batch"
+    ],
+    "available_columns": [
+      "specimen_id",
+      "subject_id",
+      "condition",
+      "group"
+    ]
+  },
+  "warning_count": 2,
+  "warnings": [
+    "feature_annotation_consensus_status=missing_or_invalid",
+    "sample metadata is missing recommended columns: batch"
+  ],
+  "analysis_bundle": {
+    "entrypoint_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_dry_run_v0.9/results/analysis_bundle_manifest.json",
+    "entrypoint_kind": "analysis_bundle_manifest",
+    "bundle_root": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_dry_run_v0.9",
+    "artifact_paths": {
+      "matrix_spec": "specs/matrix.spec.json",
+      "execution_run_spec": "specs/execution-run.spec.json",
+      "merged_matrix": "counts/merged_gene_numreads.tsv",
+      "aligned_sample_metadata": "metadata/aligned_sample_metadata.tsv",
+      "analysis_merge_summary": "results/analysis_merge_summary.json",
+      "build_analysis_matrix_log": "logs/build_analysis_matrix.log"
+    },
+    "required_artifacts": [
+      "matrix_spec",
+      "execution_run_spec",
+      "merged_matrix",
+      "aligned_sample_metadata",
+      "analysis_merge_summary",
+      "build_analysis_matrix_log"
+    ],
+    "optional_artifacts": [],
+    "manifest_preview": {
+      "schema_name": "AnalysisBundleManifest",
+      "schema_version": "0.1.0",
+      "bundle_kind": "analysis_bundle",
+      "bundle_scope": "analysis",
+      "matrix_id": "MAT_TEST_MERGE",
+      "run_id": "PREVIEW_BUILD_ANALYSIS_MATRIX_20260408_195256",
+      "bundle_root": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_dry_run_v0.9",
+      "created_at": "2026-04-08T19:52:56.198692+09:00",
+      "artifacts": {
+        "matrix_spec": {
+          "path": "specs/matrix.spec.json",
+          "kind": "spec",
+          "schema_name": "MatrixSpec",
+          "required": true
+        },
+        "execution_run_spec": {
+          "path": "specs/execution-run.spec.json",
+          "kind": "spec",
+          "schema_name": "ExecutionRunSpec",
+          "required": true
+        },
+        "merged_matrix": {
+          "path": "counts/merged_gene_numreads.tsv",
+          "kind": "matrix",
+          "required": true
+        },
+        "aligned_sample_metadata": {
+          "path": "metadata/aligned_sample_metadata.tsv",
+          "kind": "metadata",
+          "required": true
+        },
+        "analysis_merge_summary": {
+          "path": "results/analysis_merge_summary.json",
+          "kind": "summary",
+          "required": true
+        },
+        "build_analysis_matrix_log": {
+          "path": "logs/build_analysis_matrix.log",
+          "kind": "log",
+          "required": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "matrix_id": "MAT_TEST_MERGE",
+  "matrix_scope": "analysis",
+  "matrix_kind": "count_matrix",
+  "feature_type": "gene",
+  "value_type": "integer",
+  "normalization": "raw",
+  "feature_id_system": "ensembl_gene_id",
+  "sample_axis": "specimen",
+  "matrix_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_run_v0.9.1/counts/merged_gene_numreads.tsv",
+  "source_assay_ids": [
+    "ASSAY_01",
+    "ASSAY_02"
+  ],
+  "source_specimen_ids": [
+    "SMP01",
+    "SMP02"
+  ],
+  "source_subject_ids": [
+    "SUBJ_A",
+    "SUBJ_B"
+  ],
+  "metadata": {
+    "producer_app": "iwa_rnaseq_counter",
+    "producer_version": "0.3.5",
+    "merge_strategy": "column_bind_by_feature_id",
+    "sample_metadata_path": "/tmp/test_analysis_merge/sample_metadata.tsv",
+    "aligned_sample_metadata_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_run_v0.9.1/metadata/aligned_sample_metadata.tsv",
+    "sample_metadata_alignment_status": "aligned",
+    "sample_metadata_id_column": "specimen_id",
+    "sample_metadata_row_count_input": 2,
+    "sample_metadata_row_count_aligned": 2,
+    "sample_metadata_extra_ids": [],
+    "sample_metadata_aligned_columns": [
+      "specimen_id",
+      "subject_id",
+      "condition",
+      "group"
+    ],
+    "sample_ids": [
+      "SMP01",
+      "SMP02"
+    ],
+    "source_matrix_count": 2,
+    "source_quantifiers": [],
+    "source_quantifier_versions": [],
+    "source_aggregation_input_kinds": [],
+    "feature_annotation_consensus_status": "missing_or_invalid",
+    "feature_annotation_consensus_path": null,
+    "feature_annotation_consensus_reason": {
+      "missing_count": 2,
+      "invalid_count": 0,
+      "usable_count": 0,
+      "existing_paths": [],
+      "usable_paths": [],
+      "usable_column_signatures": []
+    },
+    "feature_annotation_is_usable": false,
+    "source_feature_annotation_inspections": [
+      {
+        "path": null,
+        "exists": false,
+        "readable": false,
+        "is_usable": false,
+        "columns": [],
+        "row_count": 0,
+        "status": "missing",
+        "reason": "path_missing"
+      },
+      {
+        "path": null,
+        "exists": false,
+        "readable": false,
+        "is_usable": false,
+        "columns": [],
+        "row_count": 0,
+        "status": "missing",
+        "reason": "path_missing"
+      }
+    ],
+    "source_matrix_contexts": [
+      {
+        "matrix_id": "MAT_SMP01",
+        "matrix_path": "/tmp/test_analysis_merge/counts/smp01.tsv",
+        "matrix_scope": "assay",
+        "matrix_kind": "count_matrix",
+        "feature_type": "gene",
+        "value_type": "integer",
+        "normalization": "raw",
+        "sample_axis": "specimen",
+        "feature_id_system": "ensembl_gene_id",
+        "feature_annotation_path": null,
+        "source_assay_ids": [
+          "ASSAY_01"
+        ],
+        "source_specimen_ids": [
+          "SMP01"
+        ],
+        "source_subject_ids": [
+          "SUBJ_A"
+        ],
+        "producer_app": null,
+        "producer_version": null,
+        "quantifier": null,
+        "quantifier_version": null,
+        "aggregation_input_kind": null,
+        "quantifier_index_path": null,
+        "tx2gene_path": null,
+        "annotation_gtf_path": null,
+        "reference_context": {},
+        "feature_annotation_available": null
+      },
+      {
+        "matrix_id": "MAT_SMP02",
+        "matrix_path": "/tmp/test_analysis_merge/counts/smp02.tsv",
+        "matrix_scope": "assay",
+        "matrix_kind": "count_matrix",
+        "feature_type": "gene",
+        "value_type": "integer",
+        "normalization": "raw",
+        "sample_axis": "specimen",
+        "feature_id_system": "ensembl_gene_id",
+        "feature_annotation_path": null,
+        "source_assay_ids": [
+          "ASSAY_02"
+        ],
+        "source_specimen_ids": [
+          "SMP02"
+        ],
+        "source_subject_ids": [
+          "SUBJ_B"
+        ],
+        "producer_app": null,
+        "producer_version": null,
+        "quantifier": null,
+        "quantifier_version": null,
+        "aggregation_input_kind": null,
+        "quantifier_index_path": null,
+        "tx2gene_path": null,
+        "annotation_gtf_path": null,
+        "reference_context": {},
+        "feature_annotation_available": null
+      }
+    ],
+    "analysis_bundle_manifest_path": "/home/manager/iwa_bio_analysis_orchestra/iwa_rnaseq_counter/test_run_v0.9.1/results/analysis_bundle_manifest.json",
+    "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
+    "warnings": [
+      "feature_annotation_consensus_status=missing_or_invalid",
+      "sample metadata is missing recommended columns: batch"
+    ]
+  },
+  "overlay": {},
+  "$schema_name": "MatrixSpec",
+  "$schema_version": "0.1.0"
+}

@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from importlib.metadata import PackageNotFoundError, version
 
 import pandas as pd
 
@@ -64,6 +65,35 @@ RECOMMENDED_SAMPLE_METADATA_COLUMNS = (
     "group",
     "batch",
 )
+
+ANALYSIS_BUNDLE_SCHEMA_NAME = "AnalysisBundleManifest"
+ANALYSIS_BUNDLE_SCHEMA_VERSION = "0.2.0"
+
+ANALYSIS_BUNDLE_CONTRACT_NAME = "analysis_bundle"
+ANALYSIS_BUNDLE_CONTRACT_VERSION = "1.0.0"
+ANALYSIS_BUNDLE_KIND = "rna_seq_analysis_bundle"
+ANALYSIS_BUNDLE_PRODUCER = "iwa_rnaseq_counter"
+
+
+def _get_counter_producer_version() -> str:
+    try:
+        return version("iwa-rnaseq-counter")
+    except PackageNotFoundError:
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _build_analysis_bundle_contract_block(*, producer_version: str) -> dict[str, Any]:
+    return {
+        "schema_name": ANALYSIS_BUNDLE_SCHEMA_NAME,
+        "schema_version": ANALYSIS_BUNDLE_SCHEMA_VERSION,
+        "contract_name": ANALYSIS_BUNDLE_CONTRACT_NAME,
+        "contract_version": ANALYSIS_BUNDLE_CONTRACT_VERSION,
+        "bundle_kind": ANALYSIS_BUNDLE_KIND,
+        "producer": ANALYSIS_BUNDLE_PRODUCER,
+        "producer_version": producer_version,
+    }
 
 
 def _inspect_recommended_sample_metadata_columns(
@@ -598,12 +628,20 @@ def _build_analysis_merge_summary(
     output_refs: list[str],
     input_refs: list[str],
     bundle_manifest_path: Path | None = None,
-    analysis_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    producer_version = _get_counter_producer_version()
+
     return {
         "schema_name": "AnalysisMergeSummary",
         "schema_version": "0.1.0",
         "status": "completed",
+        "analysis_bundle_contract": {
+            "contract_name": ANALYSIS_BUNDLE_CONTRACT_NAME,
+            "contract_version": ANALYSIS_BUNDLE_CONTRACT_VERSION,
+            "bundle_kind": ANALYSIS_BUNDLE_KIND,
+            "producer": ANALYSIS_BUNDLE_PRODUCER,
+            "producer_version": producer_version,
+        },
         "matrix_id": matrix_id,
         "matrix_path": str(matrix_path.resolve()),
         "sample_metadata_path": str(sample_metadata_path.resolve()),
@@ -667,6 +705,9 @@ def _write_analysis_merge_log(
         f"feature_annotation_consensus_status={feature_annotation_consensus_status}",
         f"sample_metadata_alignment_status={sample_metadata_alignment_status}",
         f"warning_count={len(warnings)}",
+        f"analysis_bundle_contract_name={ANALYSIS_BUNDLE_CONTRACT_NAME}",
+        f"analysis_bundle_contract_version={ANALYSIS_BUNDLE_CONTRACT_VERSION}",
+        f"analysis_bundle_producer_version={_get_counter_producer_version()}",
     ]
 
     if analysis_bundle_manifest_path:
@@ -768,10 +809,12 @@ def _build_analysis_bundle_manifest(
             "required": False,
         }
 
+    contract_block = _build_analysis_bundle_contract_block(
+        producer_version=_get_counter_producer_version(),
+    )
+
     return {
-        "schema_name": "AnalysisBundleManifest",
-        "schema_version": "0.1.0",
-        "bundle_kind": "analysis_bundle",
+        **contract_block,
         "bundle_scope": "analysis",
         "matrix_id": matrix_id,
         "run_id": run_id,
@@ -799,6 +842,7 @@ def _build_analysis_bundle_preview(
     analysis bundle の entrypoint と artifact shape を組み立てる。
     実ファイルの existence check はせず、bundle contract の planned shape を返す。
     """
+    outdir = outdir.resolve()
     counts_dir = outdir / "counts"
     logs_dir = outdir / "logs"
     specs_dir = outdir / "specs"
@@ -836,10 +880,19 @@ def _build_analysis_bundle_preview(
         if isinstance(entry, dict) and entry.get("required") is False
     ]
 
+    producer_version = _get_counter_producer_version()
+
     return {
         "entrypoint_path": str(manifest_path.resolve()),
         "entrypoint_kind": "analysis_bundle_manifest",
         "bundle_root": str(outdir.resolve()),
+        "contract": {
+            "contract_name": ANALYSIS_BUNDLE_CONTRACT_NAME,
+            "contract_version": ANALYSIS_BUNDLE_CONTRACT_VERSION,
+            "bundle_kind": ANALYSIS_BUNDLE_KIND,
+            "producer": ANALYSIS_BUNDLE_PRODUCER,
+            "producer_version": producer_version,
+        },
         "artifact_paths": artifact_paths,
         "required_artifacts": required_artifacts,
         "optional_artifacts": optional_artifacts,
@@ -857,6 +910,7 @@ def build_analysis_matrix(
     if not matrix_specs:
         raise ValueError("matrix_specs must not be empty")
 
+    outdir = outdir.resolve()
     outdir.mkdir(parents=True, exist_ok=True)
     counts_dir = outdir / "counts"
     logs_dir = outdir / "logs"
@@ -906,9 +960,10 @@ def build_analysis_matrix(
     matrix_path = counts_dir / "merged_gene_numreads.tsv"
     merged_df.to_csv(matrix_path, sep="\t")
 
+    producer_version = _get_counter_producer_version()
     analysis_metadata = {
         "producer_app": "iwa_rnaseq_counter",
-        "producer_version": "0.3.5",
+        "producer_version": producer_version,
         "merge_strategy": "column_bind_by_feature_id",
         "sample_metadata_path": str(sample_metadata_path.resolve()),
         "aligned_sample_metadata_path": sample_metadata_alignment["aligned_sample_metadata_path"],
@@ -966,7 +1021,7 @@ def build_analysis_matrix(
         schema_version="0.1.0",
         run_id=run_id or f"RUN_BUILD_ANALYSIS_MATRIX_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         app_name="iwa_rnaseq_counter",
-        app_version="0.3.5",
+        app_version=producer_version,
         started_at=started_at,
         input_refs=[spec.matrix_id for spec in matrix_specs],
         output_refs=[analysis_spec.matrix_id],

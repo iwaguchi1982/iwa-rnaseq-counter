@@ -10,6 +10,17 @@ from ..models.execution_run import ExecutionRunSpec
 from ..models.matrix import MatrixSpec
 
 
+@dataclass(frozen=True)
+class AnalysisBundleContractInfo:
+    contract_name: str
+    contract_version: str
+    bundle_kind: str
+    producer: str | None
+    producer_version: str | None
+    is_supported: bool
+    compatibility_status: str
+
+
 @dataclass
 class AnalysisBundlePaths:
     manifest_path: Path
@@ -31,6 +42,7 @@ class AnalysisBundle:
     execution_run_spec: ExecutionRunSpec
     analysis_merge_summary: dict[str, Any]
     aligned_sample_metadata: pd.DataFrame
+    contract_info: AnalysisBundleContractInfo
     merged_matrix: pd.DataFrame | None = None
 
 
@@ -157,6 +169,103 @@ def _read_execution_run_spec(file_path: str | Path) -> ExecutionRunSpec:
 
 
 def _read_tabular_file(path: Path) -> pd.DataFrame:
+    ...
+
+def _parse_major_version(version_text: str) -> int:
+    first = str(version_text).split(".", 1)[0]
+    return int(first)
+
+
+def evaluate_analysis_bundle_contract(
+    manifest: dict[str, Any],
+) -> AnalysisBundleContractInfo:
+    contract_name = str(manifest.get("contract_name") or "")
+    contract_version = str(manifest.get("contract_version") or "")
+    bundle_kind = str(manifest.get("bundle_kind") or "")
+    producer = manifest.get("producer")
+    producer_version = manifest.get("producer_version")
+
+    if contract_name != "analysis_bundle":
+        return AnalysisBundleContractInfo(
+            contract_name=contract_name,
+            contract_version=contract_version,
+            bundle_kind=bundle_kind,
+            producer=producer,
+            producer_version=producer_version,
+            is_supported=False,
+            compatibility_status="invalid_contract_name",
+        )
+
+    if bundle_kind != "rna_seq_analysis_bundle":
+        return AnalysisBundleContractInfo(
+            contract_name=contract_name,
+            contract_version=contract_version,
+            bundle_kind=bundle_kind,
+            producer=producer,
+            producer_version=producer_version,
+            is_supported=False,
+            compatibility_status="unsupported_bundle_kind",
+        )
+
+    if not contract_version:
+        return AnalysisBundleContractInfo(
+            contract_name=contract_name,
+            contract_version=contract_version,
+            bundle_kind=bundle_kind,
+            producer=producer,
+            producer_version=producer_version,
+            is_supported=False,
+            compatibility_status="missing_contract_version",
+        )
+
+    try:
+        major = _parse_major_version(contract_version)
+    except Exception:
+        return AnalysisBundleContractInfo(
+            contract_name=contract_name,
+            contract_version=contract_version,
+            bundle_kind=bundle_kind,
+            producer=producer,
+            producer_version=producer_version,
+            is_supported=False,
+            compatibility_status="invalid_contract_version",
+        )
+
+    if major != 1:
+        return AnalysisBundleContractInfo(
+            contract_name=contract_name,
+            contract_version=contract_version,
+            bundle_kind=bundle_kind,
+            producer=producer,
+            producer_version=producer_version,
+            is_supported=False,
+            compatibility_status="unsupported_contract_major",
+        )
+
+    return AnalysisBundleContractInfo(
+        contract_name=contract_name,
+        contract_version=contract_version,
+        bundle_kind=bundle_kind,
+        producer=producer,
+        producer_version=producer_version,
+        is_supported=True,
+        compatibility_status="supported",
+    )
+
+
+def _raise_if_unsupported_analysis_bundle_contract(
+    contract_info: AnalysisBundleContractInfo,
+) -> None:
+    if contract_info.is_supported:
+        return
+
+    raise ValueError(
+        "unsupported analysis bundle contract: "
+        f"status={contract_info.compatibility_status}, "
+        f"contract_name={contract_info.contract_name!r}, "
+        f"contract_version={contract_info.contract_version!r}, "
+        f"bundle_kind={contract_info.bundle_kind!r}"
+    )
     suffix = path.suffix.lower()
 
     if suffix in {".tsv", ".txt"}:
@@ -261,6 +370,9 @@ def read_analysis_bundle(
     paths = resolve_analysis_bundle_paths(manifest_path)
     manifest = _read_json(paths.manifest_path)
 
+    contract_info = evaluate_analysis_bundle_contract(manifest)
+    _raise_if_unsupported_analysis_bundle_contract(contract_info)
+
     matrix_spec = read_matrix_spec(paths.matrix_spec_path)
     execution_run_spec = _read_execution_run_spec(paths.execution_run_spec_path)
     analysis_merge_summary = _read_json(paths.analysis_merge_summary_path)
@@ -277,5 +389,6 @@ def read_analysis_bundle(
         execution_run_spec=execution_run_spec,
         analysis_merge_summary=analysis_merge_summary,
         aligned_sample_metadata=aligned_sample_metadata,
+        contract_info=contract_info,
         merged_matrix=merged_matrix,
     )
