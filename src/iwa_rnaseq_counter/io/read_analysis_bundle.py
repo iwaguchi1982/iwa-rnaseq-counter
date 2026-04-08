@@ -169,7 +169,28 @@ def _read_execution_run_spec(file_path: str | Path) -> ExecutionRunSpec:
 
 
 def _read_tabular_file(path: Path) -> pd.DataFrame:
-    ...
+    suffix = path.suffix.lower()
+
+    if suffix in {".tsv", ".txt"}:
+        df = pd.read_csv(path, sep="\t")
+        if len(df.columns) == 1:
+            return pd.read_csv(path)
+        return df
+
+    if suffix == ".csv":
+        df = pd.read_csv(path)
+        if len(df.columns) == 1:
+            return pd.read_csv(path, sep="\t")
+        return df
+
+    try:
+        df = pd.read_csv(path)
+        if len(df.columns) > 1:
+            return df
+    except Exception:
+        pass
+
+    return pd.read_csv(path, sep="\t")
 
 def _parse_major_version(version_text: str) -> int:
     first = str(version_text).split(".", 1)[0]
@@ -266,28 +287,6 @@ def _raise_if_unsupported_analysis_bundle_contract(
         f"contract_version={contract_info.contract_version!r}, "
         f"bundle_kind={contract_info.bundle_kind!r}"
     )
-    suffix = path.suffix.lower()
-
-    if suffix in {".tsv", ".txt"}:
-        df = pd.read_csv(path, sep="\t")
-        if len(df.columns) == 1:
-            return pd.read_csv(path)
-        return df
-
-    if suffix == ".csv":
-        df = pd.read_csv(path)
-        if len(df.columns) == 1:
-            return pd.read_csv(path, sep="\t")
-        return df
-
-    try:
-        df = pd.read_csv(path)
-        if len(df.columns) > 1:
-            return df
-    except Exception:
-        pass
-
-    return pd.read_csv(path, sep="\t")
 
 
 def resolve_analysis_bundle_paths(

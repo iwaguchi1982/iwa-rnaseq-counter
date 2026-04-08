@@ -628,6 +628,7 @@ def _build_analysis_merge_summary(
     output_refs: list[str],
     input_refs: list[str],
     bundle_manifest_path: Path | None = None,
+    analysis_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     producer_version = _get_counter_producer_version()
 
