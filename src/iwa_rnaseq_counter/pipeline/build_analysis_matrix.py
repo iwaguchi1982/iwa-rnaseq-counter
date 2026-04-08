@@ -457,54 +457,6 @@ def _collect_analysis_merge_warnings(
     return warnings
 
 
-def _prepare_analysis_merge_inputs(
-    matrix_specs: list[MatrixSpec],
-    sample_metadata_path: Path,
-    metadata_dir: Path | None = None,
-) -> dict[str, Any]:
-    """
-    v0.9.0-4:
-    dry-run と本実行の両方で使う共通準備処理。
-    """
-    _validate_mergeable_matrix_specs(matrix_specs)
-
-    normalized_tables: list[pd.DataFrame] = []
-    source_assay_ids: list[str] = []
-    source_specimen_ids: list[str] = []
-    source_subject_ids: list[str] = []
-    specimen_ids_in_order: list[str] = []
-
-    for spec in matrix_specs:
-        df, specimen_id = _load_matrix_for_merge(spec)
-        normalized_tables.append(df)
-        specimen_ids_in_order.append(specimen_id)
-        source_assay_ids.extend(spec.source_assay_ids)
-        source_specimen_ids.extend(spec.source_specimen_ids)
-        source_subject_ids.extend(spec.source_subject_ids)
-
-    merge_provenance = _build_merge_provenance(matrix_specs)
-    sample_metadata_alignment = _validate_and_align_sample_metadata(
-        sample_metadata_path=sample_metadata_path,
-        specimen_ids_in_order=specimen_ids_in_order,
-        metadata_dir=metadata_dir,
-    )
-    warnings = _collect_analysis_merge_warnings(
-        merge_provenance=merge_provenance,
-        sample_metadata_alignment=sample_metadata_alignment,
-    )
-
-    return {
-        "normalized_tables": normalized_tables,
-        "source_assay_ids": source_assay_ids,
-        "source_specimen_ids": source_specimen_ids,
-        "source_subject_ids": source_subject_ids,
-        "specimen_ids_in_order": specimen_ids_in_order,
-        "merge_provenance": merge_provenance,
-        "sample_metadata_alignment": sample_metadata_alignment,
-        "warnings": warnings,
-    }
-
-
 def preview_build_analysis_matrix(
     matrix_specs: list[MatrixSpec],
     sample_metadata_path: Path,
@@ -514,19 +466,29 @@ def preview_build_analysis_matrix(
     build-analysis-matrix の dry-run 用 preview。
     書き込みは行わず、merge できるかどうかと handoff context を返す。
     """
-    prepared = _prepare_analysis_merge_inputs(
-        matrix_specs=matrix_specs,
+    _validate_mergeable_matrix_specs(matrix_specs)
+
+    specimen_ids_in_order: list[str] = []
+    for spec in matrix_specs:
+        if not spec.source_specimen_ids:
+            raise ValueError(f"MatrixSpec {spec.matrix_id} has no source_specimen_ids")
+        specimen_ids_in_order.append(str(spec.source_specimen_ids[0]))
+
+    merge_provenance = _build_merge_provenance(matrix_specs)
+    sample_metadata_alignment = _validate_and_align_sample_metadata(
         sample_metadata_path=sample_metadata_path,
+        specimen_ids_in_order=specimen_ids_in_order,
         metadata_dir=None,
     )
-
-    merge_provenance = prepared["merge_provenance"]
-    sample_metadata_alignment = prepared["sample_metadata_alignment"]
+    warnings = _collect_analysis_merge_warnings(
+        merge_provenance=merge_provenance,
+        sample_metadata_alignment=sample_metadata_alignment,
+    )
 
     return {
         "status": "preview_ok",
         "source_matrix_count": len(matrix_specs),
-        "source_specimen_ids": prepared["source_specimen_ids"],
+        "source_specimen_ids": specimen_ids_in_order,
         "source_quantifiers": merge_provenance["source_quantifiers"],
         "source_quantifier_versions": merge_provenance["source_quantifier_versions"],
         "source_aggregation_input_kinds": merge_provenance["source_aggregation_input_kinds"],
@@ -539,7 +501,7 @@ def preview_build_analysis_matrix(
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
-        "warnings": prepared["warnings"],
+        "warnings": warnings,
     }
 
 
@@ -548,11 +510,12 @@ def _build_analysis_merge_summary(
     matrix_id: str,
     matrix_path: Path,
     sample_metadata_path: Path,
-    analysis_spec: MatrixSpec,
-    run_spec: ExecutionRunSpec,
     merge_provenance: dict[str, Any],
     sample_metadata_alignment: dict[str, Any],
     warnings: list[str],
+    run_id: str,
+    output_refs: list[str],
+    input_refs: list[str],
 ) -> dict[str, Any]:
     return {
         "schema_name": "AnalysisMergeSummary",
@@ -561,8 +524,7 @@ def _build_analysis_merge_summary(
         "matrix_path": str(matrix_path.resolve()),
         "sample_metadata_path": str(sample_metadata_path.resolve()),
         "aligned_sample_metadata_path": sample_metadata_alignment.get("aligned_sample_metadata_path"),
-        "run_id": run_spec.run_id,
-        "status": run_spec.status,
+        "run_id": run_id,
         "source_matrix_count": merge_provenance["source_matrix_count"],
         "source_quantifiers": merge_provenance["source_quantifiers"],
         "source_quantifier_versions": merge_provenance["source_quantifier_versions"],
@@ -577,9 +539,8 @@ def _build_analysis_merge_summary(
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
         "warnings": warnings,
-        "output_refs": run_spec.output_refs,
-        "input_refs": run_spec.input_refs,
-        "analysis_metadata_keys": sorted((analysis_spec.metadata or {}).keys()),
+        "input_refs": input_refs,
+        "output_refs": output_refs,
     }
 
 
@@ -644,19 +605,32 @@ def build_analysis_matrix(
 
     started_at = datetime.now(timezone.utc).astimezone().isoformat()
 
-    prepared = _prepare_analysis_merge_inputs(
-        matrix_specs=matrix_specs,
+    _validate_mergeable_matrix_specs(matrix_specs)
+
+    normalized_tables: list[pd.DataFrame] = []
+    source_assay_ids: list[str] = []
+    source_specimen_ids: list[str] = []
+    source_subject_ids: list[str] = []
+    specimen_ids_in_order: list[str] = []
+
+    for spec in matrix_specs:
+        df, specimen_id = _load_matrix_for_merge(spec)
+        normalized_tables.append(df)
+        specimen_ids_in_order.append(specimen_id)
+        source_assay_ids.extend(spec.source_assay_ids)
+        source_specimen_ids.extend(spec.source_specimen_ids)
+        source_subject_ids.extend(spec.source_subject_ids)
+
+    merge_provenance = _build_merge_provenance(matrix_specs)
+    sample_metadata_alignment = _validate_and_align_sample_metadata(
         sample_metadata_path=sample_metadata_path,
+        specimen_ids_in_order=specimen_ids_in_order,
         metadata_dir=metadata_dir,
     )
-
-    normalized_tables = prepared["normalized_tables"]
-    source_assay_ids = prepared["source_assay_ids"]
-    source_specimen_ids = prepared["source_specimen_ids"]
-    source_subject_ids = prepared["source_subject_ids"]
-    merge_provenance = prepared["merge_provenance"]
-    sample_metadata_alignment = prepared["sample_metadata_alignment"]
-    warnings = prepared["warnings"]
+    warnings = _collect_analysis_merge_warnings(
+        merge_provenance=merge_provenance,
+        sample_metadata_alignment=sample_metadata_alignment,
+    )
 
     merged_df = pd.concat(normalized_tables, axis=1, join="outer").fillna(0)
     merged_df = merged_df.astype(int)
@@ -755,11 +729,12 @@ def build_analysis_matrix(
         matrix_id=matrix_id,
         matrix_path=matrix_path,
         sample_metadata_path=sample_metadata_path,
-        analysis_spec=analysis_spec,
-        run_spec=run_spec,
         merge_provenance=merge_provenance,
         sample_metadata_alignment=sample_metadata_alignment,
         warnings=warnings,
+        run_id=run_spec.run_id,
+        input_refs=run_spec.input_refs,
+        output_refs=run_spec.output_refs,
     )
 
     _write_analysis_merge_summary(results_dir / "analysis_merge_summary.json", summary)
