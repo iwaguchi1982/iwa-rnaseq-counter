@@ -36,8 +36,8 @@ def test_summarize_analysis_bundle_from_valid_fixture(tmp_path):
     assert summary["column_order_specimen_ids"] == ["SP001", "SP002"]
     
     # Check normalization
-    assert "manifest_path" in summary
-    assert str(summary["manifest_path"]).endswith("analysis_bundle_manifest.json")
+    assert "analysis_bundle_manifest_path" in summary
+    assert str(summary["analysis_bundle_manifest_path"]).endswith("analysis_bundle_manifest.json")
 
 def test_summarize_analysis_bundle_priority_fallback(tmp_path):
     # Dummy bundle as dict

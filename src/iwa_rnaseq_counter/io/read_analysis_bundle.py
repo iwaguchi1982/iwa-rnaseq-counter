@@ -852,7 +852,7 @@ def summarize_analysis_bundle_for_consumer(
     matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
     execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
 
-    manifest_path = _first_not_none(
+    analysis_bundle_manifest_path = _first_not_none(
         str(paths.manifest_path) if paths is not None else None,
         manifest.get("manifest_path"),
         matrix_metadata.get("analysis_bundle_manifest_path"),
@@ -940,5 +940,5 @@ def summarize_analysis_bundle_for_consumer(
         "feature_annotation_status": feature_annotation_status,
         "sample_metadata_alignment_status": sample_metadata_alignment_status,
         "warning_summary": warning_summary,
-        "manifest_path": manifest_path,
+        "analysis_bundle_manifest_path": analysis_bundle_manifest_path,
     }
