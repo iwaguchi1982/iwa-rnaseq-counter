@@ -14,6 +14,7 @@ from iwa_rnaseq_counter.io.read_matrix_spec import read_matrix_spec
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 from iwa_rnaseq_counter.pipeline.runner import run_counter_pipeline
+from iwa_rnaseq_counter.pipeline.build_analysis_matrix import (
     build_analysis_matrix,
     preview_build_analysis_matrix,
 )
