@@ -581,6 +581,64 @@ def _write_analysis_merge_log(
     log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _build_analysis_bundle_manifest(
+    *,
+    outdir: Path,
+    analysis_spec: MatrixSpec,
+    run_spec: ExecutionRunSpec,
+    sample_metadata_path: Path,
+    aligned_sample_metadata_path: str | None,
+    analysis_merge_summary_path: Path,
+) -> dict[str, Any]:
+    """
+    v0.9.1-1:
+    analysis merge の主要成果物を 1 枚の manifest から辿れるようにする。
+    """
+    results_dir = outdir / "results"
+    specs_dir = outdir / "specs"
+
+    manifest = {
+        "schema_name": "AnalysisBundleManifest",
+        "schema_version": "0.1.0",
+        "bundle_kind": "analysis_matrix_bundle",
+        "bundle_id": analysis_spec.matrix_id,
+        "matrix_id": analysis_spec.matrix_id,
+        "run_id": run_spec.run_id,
+        "producer_app": "iwa_rnaseq_counter",
+        "producer_version": "0.3.5",
+        "matrix_scope": analysis_spec.matrix_scope,
+        "feature_type": analysis_spec.feature_type,
+        "sample_axis": analysis_spec.sample_axis,
+        "paths": {
+            "matrix_spec": str((specs_dir / "matrix.spec.json").resolve()),
+            "execution_run_spec": str((specs_dir / "execution-run.spec.json").resolve()),
+            "merged_matrix": str(Path(analysis_spec.matrix_path).resolve()),
+            "sample_metadata_input": str(sample_metadata_path.resolve()),
+            "aligned_sample_metadata": aligned_sample_metadata_path,
+            "analysis_merge_summary": str(analysis_merge_summary_path.resolve()),
+            "log": run_spec.log_path,
+            "feature_annotation": analysis_spec.feature_annotation_path,
+        },
+        "bundle_summary": {
+            "source_matrix_count": (analysis_spec.metadata or {}).get("source_matrix_count"),
+            "source_quantifiers": (analysis_spec.metadata or {}).get("source_quantifiers", []),
+            "source_quantifier_versions": (analysis_spec.metadata or {}).get("source_quantifier_versions", []),
+            "source_aggregation_input_kinds": (analysis_spec.metadata or {}).get("source_aggregation_input_kinds", []),
+            "feature_annotation_consensus_status": (analysis_spec.metadata or {}).get("feature_annotation_consensus_status"),
+            "sample_metadata_alignment_status": (analysis_spec.metadata or {}).get("sample_metadata_alignment_status"),
+            "warnings": (analysis_spec.metadata or {}).get("warnings", []),
+        },
+    }
+
+    return manifest
+
+
+def _write_analysis_bundle_manifest(manifest_path: Path, manifest: dict[str, Any]) -> None:
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
+
+
 def build_analysis_matrix(
     matrix_specs: list[MatrixSpec],
     sample_metadata_path: Path,
@@ -737,7 +795,9 @@ def build_analysis_matrix(
         output_refs=run_spec.output_refs,
     )
 
-    _write_analysis_merge_summary(results_dir / "analysis_merge_summary.json", summary)
+    analysis_merge_summary_path = results_dir / "analysis_merge_summary.json"
+
+    _write_analysis_merge_summary(analysis_merge_summary_path, summary)
     _write_analysis_merge_log(
         log_path,
         matrix_id=matrix_id,
@@ -746,6 +806,19 @@ def build_analysis_matrix(
         feature_annotation_consensus_status=merge_provenance["feature_annotation_consensus_status"],
         sample_metadata_alignment_status=sample_metadata_alignment["status"],
         warnings=warnings,
+    )
+
+    manifest = _build_analysis_bundle_manifest(
+        outdir=outdir,
+        analysis_spec=analysis_spec,
+        run_spec=run_spec,
+        sample_metadata_path=sample_metadata_path,
+        aligned_sample_metadata_path=sample_metadata_alignment["aligned_sample_metadata_path"],
+        analysis_merge_summary_path=analysis_merge_summary_path,
+    )
+    _write_analysis_bundle_manifest(
+        results_dir / "analysis_bundle_manifest.json",
+        manifest,
     )
 
     return analysis_spec, run_spec
