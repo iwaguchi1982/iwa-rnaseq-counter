@@ -519,11 +519,15 @@ def _collect_analysis_merge_warnings(
 def preview_build_analysis_matrix(
     matrix_specs: list[MatrixSpec],
     sample_metadata_path: Path,
+    outdir: Path | None = None,
+    matrix_id: str | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    v0.9.0-4:
+    v0.9.1-4:
     build-analysis-matrix の dry-run 用 preview。
-    書き込みは行わず、merge できるかどうかと handoff context を返す。
+    書き込みは行わず、merge readiness に加えて
+    analysis bundle の planned manifest shape も返す。
     """
     _validate_mergeable_matrix_specs(matrix_specs)
 
@@ -544,7 +548,7 @@ def preview_build_analysis_matrix(
         sample_metadata_alignment=sample_metadata_alignment,
     )
 
-    return {
+    preview: dict[str, Any] = {
         "status": "preview_ok",
         "source_matrix_count": len(matrix_specs),
         "source_specimen_ids": specimen_ids_in_order,
@@ -560,8 +564,26 @@ def preview_build_analysis_matrix(
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
+        "sample_metadata_recommended_columns": sample_metadata_alignment.get(
+            "recommended_columns", {}
+        ),
+        "warning_count": len(warnings),
         "warnings": warnings,
     }
+
+    if outdir is not None:
+        preview_matrix_id = matrix_id or "PREVIEW_ANALYSIS_MATRIX"
+        preview_run_id = run_id or (
+            f"PREVIEW_BUILD_ANALYSIS_MATRIX_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        preview["analysis_bundle"] = _build_analysis_bundle_preview(
+            outdir=outdir,
+            matrix_id=preview_matrix_id,
+            run_id=preview_run_id,
+            feature_annotation_path=merge_provenance["feature_annotation_consensus_path"],
+        )
+
+    return preview
 
 
 def _build_analysis_merge_summary(
@@ -575,10 +597,13 @@ def _build_analysis_merge_summary(
     run_id: str,
     output_refs: list[str],
     input_refs: list[str],
+    bundle_manifest_path: Path | None = None,
+    analysis_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_name": "AnalysisMergeSummary",
         "schema_version": "0.1.0",
+        "status": "completed",
         "matrix_id": matrix_id,
         "matrix_path": str(matrix_path.resolve()),
         "sample_metadata_path": str(sample_metadata_path.resolve()),
@@ -597,8 +622,18 @@ def _build_analysis_merge_summary(
         "sample_metadata_row_count_input": sample_metadata_alignment["row_count_input"],
         "sample_metadata_row_count_aligned": sample_metadata_alignment["row_count_aligned"],
         "sample_metadata_extra_ids": sample_metadata_alignment["extra_metadata_ids"],
-        "sample_metadata_recommended_columns": sample_metadata_alignment.get("recommended_columns", {}),
+        "sample_metadata_recommended_columns": sample_metadata_alignment.get(
+            "recommended_columns", {}
+        ),
+        "warning_count": len(warnings),
         "warnings": warnings,
+        "analysis_bundle_manifest_path": (
+            str(bundle_manifest_path.resolve()) if bundle_manifest_path else None
+        ),
+        "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
+        "analysis_bundle_artifact_paths": (
+            analysis_bundle.get("artifact_paths", {}) if analysis_bundle else {}
+        ),
         "input_refs": input_refs,
         "output_refs": output_refs,
     }
@@ -619,17 +654,24 @@ def _write_analysis_merge_log(
     feature_annotation_consensus_status: str,
     sample_metadata_alignment_status: str,
     warnings: list[str],
+    analysis_bundle_manifest_path: str | None = None,
 ) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     lines = [
         "[build_analysis_matrix]",
+        "status=completed",
         f"matrix_id={matrix_id}",
         f"source_matrix_count={source_matrix_count}",
         f"source_quantifiers={source_quantifiers}",
         f"feature_annotation_consensus_status={feature_annotation_consensus_status}",
         f"sample_metadata_alignment_status={sample_metadata_alignment_status}",
+        f"warning_count={len(warnings)}",
     ]
+
+    if analysis_bundle_manifest_path:
+        lines.append(f"analysis_bundle_manifest_path={analysis_bundle_manifest_path}")
+        lines.append("analysis_bundle_entrypoint_kind=analysis_bundle_manifest")
 
     if warnings:
         lines.append("warnings:")
@@ -745,6 +787,66 @@ def _write_analysis_bundle_manifest(manifest_path: Path, manifest: dict[str, Any
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 
 
+def _build_analysis_bundle_preview(
+    *,
+    outdir: Path,
+    matrix_id: str,
+    run_id: str,
+    feature_annotation_path: str | None,
+) -> dict[str, Any]:
+    """
+    dry-run / summary / log からも見やすいように、
+    analysis bundle の entrypoint と artifact shape を組み立てる。
+    実ファイルの existence check はせず、bundle contract の planned shape を返す。
+    """
+    counts_dir = outdir / "counts"
+    logs_dir = outdir / "logs"
+    specs_dir = outdir / "specs"
+    metadata_dir = outdir / "metadata"
+    results_dir = outdir / "results"
+
+    manifest_path = results_dir / "analysis_bundle_manifest.json"
+
+    manifest = _build_analysis_bundle_manifest(
+        outdir=outdir,
+        matrix_id=matrix_id,
+        run_id=run_id,
+        matrix_spec_path=specs_dir / "matrix.spec.json",
+        execution_run_spec_path=specs_dir / "execution-run.spec.json",
+        merged_matrix_path=counts_dir / "merged_gene_numreads.tsv",
+        aligned_sample_metadata_path=metadata_dir / "aligned_sample_metadata.tsv",
+        analysis_merge_summary_path=results_dir / "analysis_merge_summary.json",
+        build_analysis_matrix_log_path=logs_dir / "build_analysis_matrix.log",
+        feature_annotation_path=feature_annotation_path,
+    )
+
+    artifacts = manifest.get("artifacts", {}) or {}
+    artifact_paths = {
+        name: (entry.get("path") if isinstance(entry, dict) else entry)
+        for name, entry in artifacts.items()
+    }
+    required_artifacts = [
+        name
+        for name, entry in artifacts.items()
+        if isinstance(entry, dict) and entry.get("required") is True
+    ]
+    optional_artifacts = [
+        name
+        for name, entry in artifacts.items()
+        if isinstance(entry, dict) and entry.get("required") is False
+    ]
+
+    return {
+        "entrypoint_path": str(manifest_path.resolve()),
+        "entrypoint_kind": "analysis_bundle_manifest",
+        "bundle_root": str(outdir.resolve()),
+        "artifact_paths": artifact_paths,
+        "required_artifacts": required_artifacts,
+        "optional_artifacts": optional_artifacts,
+        "manifest_preview": manifest,
+    }
+
+
 def build_analysis_matrix(
     matrix_specs: list[MatrixSpec],
     sample_metadata_path: Path,
@@ -766,6 +868,8 @@ def build_analysis_matrix(
     specs_dir.mkdir(exist_ok=True)
     metadata_dir.mkdir(exist_ok=True)
     results_dir.mkdir(exist_ok=True)
+
+    manifest_path = results_dir / "analysis_bundle_manifest.json"
 
     started_at = datetime.now(timezone.utc).astimezone().isoformat()
 
@@ -825,6 +929,8 @@ def build_analysis_matrix(
         "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
         "source_feature_annotation_inspections": merge_provenance["source_feature_annotation_inspections"],
         "source_matrix_contexts": merge_provenance["source_matrix_contexts"],
+        "analysis_bundle_manifest_path": str(manifest_path.resolve()),
+        "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
         "warnings": warnings,
     }
 
@@ -881,12 +987,21 @@ def build_analysis_matrix(
             "feature_annotation_consensus_path": merge_provenance["feature_annotation_consensus_path"],
             "feature_annotation_consensus_reason": merge_provenance["feature_annotation_consensus_reason"],
             "feature_annotation_is_usable": merge_provenance["feature_annotation_is_usable"],
+            "analysis_bundle_manifest_path": str(manifest_path.resolve()),
+            "analysis_bundle_entrypoint_kind": "analysis_bundle_manifest",
             "warnings": warnings,
         },
         execution_backend="local",
         finished_at=finished_at,
         status="completed",
         log_path=str(log_path.resolve()),
+    )
+
+    analysis_bundle = _build_analysis_bundle_preview(
+        outdir=outdir,
+        matrix_id=matrix_id,
+        run_id=run_spec.run_id,
+        feature_annotation_path=merge_provenance["feature_annotation_consensus_path"],
     )
 
     summary = _build_analysis_merge_summary(
@@ -899,12 +1014,11 @@ def build_analysis_matrix(
         run_id=run_spec.run_id,
         input_refs=run_spec.input_refs,
         output_refs=run_spec.output_refs,
+        bundle_manifest_path=manifest_path,
+        analysis_bundle=analysis_bundle,
     )
 
     summary_path = results_dir / "analysis_merge_summary.json"
-    manifest_path = results_dir / "analysis_bundle_manifest.json"
-    matrix_spec_path = specs_dir / "matrix.spec.json"
-    execution_run_spec_path = specs_dir / "execution-run.spec.json"
 
     _write_analysis_merge_summary(summary_path, summary)
     _write_analysis_merge_log(
@@ -915,20 +1029,12 @@ def build_analysis_matrix(
         feature_annotation_consensus_status=merge_provenance["feature_annotation_consensus_status"],
         sample_metadata_alignment_status=sample_metadata_alignment["status"],
         warnings=warnings,
+        analysis_bundle_manifest_path=str(manifest_path.resolve()),
     )
 
-    manifest = _build_analysis_bundle_manifest(
-        outdir=outdir,
-        matrix_id=matrix_id,
-        run_id=run_spec.run_id,
-        matrix_spec_path=matrix_spec_path,
-        execution_run_spec_path=execution_run_spec_path,
-        merged_matrix_path=matrix_path,
-        aligned_sample_metadata_path=sample_metadata_alignment["aligned_sample_metadata_path"],
-        analysis_merge_summary_path=summary_path,
-        build_analysis_matrix_log_path=log_path,
-        feature_annotation_path=analysis_spec.feature_annotation_path,
+    _write_analysis_bundle_manifest(
+        manifest_path,
+        analysis_bundle["manifest_preview"],
     )
-    _write_analysis_bundle_manifest(manifest_path, manifest)
 
     return analysis_spec, run_spec

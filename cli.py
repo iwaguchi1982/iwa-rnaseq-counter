@@ -267,13 +267,24 @@ def main():
         logger = logging.getLogger(__name__)
 
         matrix_specs = [read_matrix_spec(p) for p in args.matrix_spec]
+        manifest_path = args.outdir / "results" / "analysis_bundle_manifest.json"
 
         if args.dry_run:
             preview = preview_build_analysis_matrix(
                 matrix_specs=matrix_specs,
                 sample_metadata_path=args.sample_metadata,
+                outdir=args.outdir,
+                matrix_id=args.matrix_id,
+                run_id=args.run_id,
             )
             logger.info("build-analysis-matrix dry-run completed")
+            logger.info(
+                "planned analysis bundle entrypoint: %s",
+                preview.get("analysis_bundle", {}).get(
+                    "entrypoint_path",
+                    str(manifest_path.resolve()),
+                ),
+            )
             logger.info(json.dumps(preview, indent=2, ensure_ascii=False))
             return
 
@@ -287,7 +298,14 @@ def main():
 
         write_matrix_spec(matrix_spec, args.outdir / "specs" / "matrix.spec.json")
         write_execution_run_spec(exec_spec, args.outdir / "specs" / "execution-run.spec.json")
+
         logger.info("build-analysis-matrix completed")
+        logger.info("analysis bundle entrypoint: %s", str(manifest_path.resolve()))
+        logger.info("matrix spec: %s", str((args.outdir / "specs" / "matrix.spec.json").resolve()))
+        logger.info(
+            "execution run spec: %s",
+            str((args.outdir / "specs" / "execution-run.spec.json").resolve()),
+        )
 
 
     elif args.command == "run-gui-backend":
