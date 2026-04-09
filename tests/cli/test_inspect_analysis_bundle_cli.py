@@ -47,12 +47,13 @@ def test_inspect_analysis_bundle_cli_json_output(tmp_path):
 
     assert result.returncode == 0
     
-    # Verify valid JSON
+    # Verify valid JSON and contract keys
     data = json.loads(result.stdout)
     assert data["contract_name"] == "analysis_bundle"
+    assert data["bundle_kind"] == "rna_seq_analysis_bundle"
     assert data["matrix_id"] == "TEST_ANALYSIS_MATRIX"
     assert data["run_id"] == "TEST_RUN_001"
-    assert "matrix_shape" in data
+    assert isinstance(data["matrix_shape"], dict)
     assert "analysis_bundle_manifest_path" in data
 
 def test_inspect_analysis_bundle_cli_invalid_manifest_returns_nonzero():
