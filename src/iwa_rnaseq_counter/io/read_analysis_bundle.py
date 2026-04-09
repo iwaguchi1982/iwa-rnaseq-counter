@@ -802,8 +802,8 @@ def get_bundle_matrix_id(bundle: AnalysisBundle | Mapping[str, Any]) -> str | No
     matrix_spec = _bundle_matrix_spec(bundle)
     analysis_summary = _bundle_analysis_merge_summary(bundle)
     return _first_not_none(
-        _get_field(matrix_spec, "matrix_id"),
         analysis_summary.get("matrix_id"),
+        _get_field(matrix_spec, "matrix_id"),
     )
 
 
