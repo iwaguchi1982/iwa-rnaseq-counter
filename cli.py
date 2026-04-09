@@ -18,7 +18,11 @@ from iwa_rnaseq_counter.pipeline.build_analysis_matrix import (
     build_analysis_matrix,
     preview_build_analysis_matrix,
 )
-from iwa_rnaseq_counter.io.read_analysis_bundle import validate_analysis_bundle
+from iwa_rnaseq_counter.io.read_analysis_bundle import (
+    validate_analysis_bundle,
+    read_analysis_bundle,
+    summarize_analysis_bundle_for_consumer,
+)
 
 
 def setup_logging(level: str, logfile: Path | None = None) -> None:
@@ -172,6 +176,11 @@ def main():
     p_validate.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
     p_validate.add_argument("--json", action="store_true", help="Output validation results as JSON")
     p_validate.add_argument("--log-level", type=str, default="INFO")
+
+    p_inspect = subparsers.add_parser("inspect-analysis-bundle", help="Inspect an analysis bundle and print its summary as JSON")
+    p_inspect.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
+    p_inspect.add_argument("--json", action="store_true", help="Output bundle summary as machine-readable JSON")
+    p_inspect.add_argument("--log-level", type=str, default="WARNING")
 
     args = parser.parse_args()
 
@@ -383,6 +392,54 @@ def main():
             logger.info("=" * 60)
 
         if not result.is_valid:
+            sys.exit(1)
+
+    elif args.command == "inspect-analysis-bundle":
+        setup_logging(args.log_level)
+        
+        try:
+            bundle = read_analysis_bundle(args.manifest)
+            summary = summarize_analysis_bundle_for_consumer(bundle)
+            
+            if args.json:
+                def default_serializer(obj):
+                    if isinstance(obj, Path):
+                        return str(obj)
+                    return str(obj)
+                
+                print(json.dumps(summary, indent=2, ensure_ascii=False, default=default_serializer))
+            else:
+                print("=" * 60)
+                print("Analysis Bundle Inspect")
+                print("=" * 60)
+                print(f"Manifest:          {summary.get('analysis_bundle_manifest_path')}")
+                print(f"Contract:          {summary.get('contract_name')}@{summary.get('contract_version')}")
+                print(f"Bundle Kind:       {summary.get('bundle_kind')}")
+                print(f"Producer:          {summary.get('producer')}@{summary.get('producer_version')}")
+                print(f"Run ID:            {summary.get('run_id')}")
+                print(f"Matrix ID:         {summary.get('matrix_id')}")
+                
+                shape = summary.get("matrix_shape", {})
+                print(f"Matrix Shape:      features={shape.get('feature_count')}, samples={shape.get('sample_count')}")
+                
+                print(f"Sample Axis:       {summary.get('sample_axis')}")
+                print(f"Feature ID System: {summary.get('feature_id_system')}")
+                
+                def _fmt(val):
+                    if val is None: return "None"
+                    if isinstance(val, (dict, list)):
+                        return json.dumps(val, ensure_ascii=False)
+                    return str(val)
+
+                print(f"Column Order Specimen IDs:        {_fmt(summary.get('column_order_specimen_ids'))}")
+                print(f"Source Quantifier Summary:        {_fmt(summary.get('source_quantifier_summary'))}")
+                print(f"Feature Annotation Status:        {_fmt(summary.get('feature_annotation_status'))}")
+                print(f"Sample Metadata Alignment Status: {_fmt(summary.get('sample_metadata_alignment_status'))}")
+                print(f"Warning Summary:                  {_fmt(summary.get('warning_summary'))}")
+                print("=" * 60)
+                
+        except Exception as e:
+            print(f"Error: Failed to inspect bundle: {e}", file=sys.stderr)
             sys.exit(1)
 
 
