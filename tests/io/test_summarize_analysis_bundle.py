@@ -71,6 +71,33 @@ def test_summarize_analysis_bundle_priority_fallback(tmp_path):
     assert summary["warning_summary"]["warning_count"] == 5
     assert summary["warning_summary"]["has_warnings"] is True
 
+def test_summarize_analysis_bundle_contract(tmp_path):
+    src = _fixture_root() / "valid_minimal_bundle"
+    bundle_dir = materialize_analysis_bundle_fixture(src, tmp_path / "valid_bundle")
+    bundle = read_analysis_bundle(bundle_dir)
+    summary = summarize_analysis_bundle_for_consumer(bundle)
+
+    # Contract: 16 mandatory top-level keys
+    expected_keys = {
+        "contract_name", "contract_version", "bundle_kind", "producer", "producer_version",
+        "matrix_id", "run_id", "matrix_shape", "sample_axis", "feature_id_system",
+        "column_order_specimen_ids", "source_quantifier_summary", "feature_annotation_status",
+        "sample_metadata_alignment_status", "warning_summary", "analysis_bundle_manifest_path"
+    }
+    actual_keys = set(summary.keys())
+    missing = expected_keys - actual_keys
+    assert not missing, f"Missing contract keys: {missing}"
+
+    # Contract: Return types for complex fields
+    assert isinstance(summary["matrix_shape"], dict)
+    assert isinstance(summary["column_order_specimen_ids"], list)
+    assert isinstance(summary["source_quantifier_summary"], dict)
+    assert isinstance(summary["analysis_bundle_manifest_path"], str)
+    
+    # Contract: Value stability for valid_minimal_bundle
+    assert summary["contract_name"] == "analysis_bundle"
+    assert summary["bundle_kind"] == "rna_seq_analysis_bundle"
+
 if __name__ == "__main__":
     from pathlib import Path
     import tempfile
@@ -78,4 +105,5 @@ if __name__ == "__main__":
         tmp_path = Path(tmp_dir)
         test_summarize_analysis_bundle_from_valid_fixture(tmp_path)
         test_summarize_analysis_bundle_priority_fallback(tmp_path)
+        test_summarize_analysis_bundle_contract(tmp_path)
     print("test_summarize_analysis_bundle: ALL PASSED")
