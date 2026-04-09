@@ -798,6 +798,161 @@ def _build_matrix_shape(
     }
 
 
+def get_bundle_matrix_id(bundle: AnalysisBundle | Mapping[str, Any]) -> str | None:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+    return _first_not_none(
+        _get_field(matrix_spec, "matrix_id"),
+        analysis_summary.get("matrix_id"),
+    )
+
+
+def get_bundle_run_id(bundle: AnalysisBundle | Mapping[str, Any]) -> str | None:
+    manifest = _bundle_manifest(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    return _first_not_none(
+        _get_field(execution_run_spec, "run_id"),
+        manifest.get("run_id"),
+    )
+
+
+def get_bundle_matrix_shape(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any]:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    return _build_matrix_shape(
+        analysis_summary=analysis_summary,
+        matrix_metadata=matrix_metadata,
+        execution_parameters=execution_parameters,
+    )
+
+
+def get_bundle_sample_axis(bundle: AnalysisBundle | Mapping[str, Any]) -> str | None:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    return _first_not_none(
+        analysis_summary.get("sample_axis"),
+        matrix_metadata.get("sample_axis_kind"),
+        execution_parameters.get("sample_axis"),
+    )
+
+
+def get_bundle_feature_id_system(bundle: AnalysisBundle | Mapping[str, Any]) -> str | None:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+
+    return _first_not_none(
+        analysis_summary.get("feature_id_system"),
+        _get_field(matrix_spec, "feature_id_system"),
+        matrix_metadata.get("feature_id_system"),
+    )
+
+
+def get_bundle_column_order_specimen_ids(bundle: AnalysisBundle | Mapping[str, Any]) -> list[Any]:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    ids = _first_not_none(
+        analysis_summary.get("column_order_specimen_ids"),
+        matrix_metadata.get("column_order_specimen_ids"),
+        execution_parameters.get("column_order_specimen_ids"),
+        [],
+    )
+    return _sequence_or_empty(ids)
+
+
+def get_bundle_source_quantifier_summary(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any]:
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    summary = _first_not_none(
+        analysis_summary.get("source_quantifier_summary"),
+        execution_parameters.get("source_quantifier_summary"),
+        {},
+    )
+    return _mapping_or_empty(summary)
+
+
+def get_bundle_feature_annotation_status(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any] | None:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    status = _first_not_none(
+        analysis_summary.get("feature_annotation_status"),
+        matrix_metadata.get("feature_annotation_status"),
+        execution_parameters.get("feature_annotation_status"),
+    )
+    if status is None:
+        return None
+    return _mapping_or_empty(status)
+
+
+def get_bundle_sample_metadata_alignment_status(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any] | None:
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    status = _first_not_none(
+        analysis_summary.get("sample_metadata_alignment_status"),
+        analysis_summary.get("sample_metadata_alignment"),
+        execution_parameters.get("sample_metadata_alignment_status"),
+    )
+    if status is None:
+        return None
+    return _mapping_or_empty(status)
+
+
+def get_bundle_warning_summary(bundle: AnalysisBundle | Mapping[str, Any]) -> dict[str, Any] | None:
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+    analysis_summary = _bundle_analysis_merge_summary(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    return _build_warning_summary(
+        analysis_summary=analysis_summary,
+        matrix_metadata=matrix_metadata,
+        execution_parameters=execution_parameters,
+    )
+
+
+def get_bundle_manifest_path(bundle: AnalysisBundle | Mapping[str, Any]) -> str | None:
+    manifest = _bundle_manifest(bundle)
+    paths = _bundle_paths(bundle)
+    matrix_spec = _bundle_matrix_spec(bundle)
+    execution_run_spec = _bundle_execution_run_spec(bundle)
+
+    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
+    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
+
+    return _first_not_none(
+        str(paths.manifest_path) if paths is not None else None,
+        manifest.get("manifest_path"),
+        matrix_metadata.get("analysis_bundle_manifest_path"),
+        execution_parameters.get("analysis_bundle_manifest_path"),
+    )
+
+
 def _build_warning_summary(
     *,
     analysis_summary: Mapping[str, Any],
@@ -844,85 +999,6 @@ def summarize_analysis_bundle_for_consumer(
     v0.11.1 の consumer-facing summary helper。
     """
     manifest = _bundle_manifest(bundle)
-    paths = _bundle_paths(bundle)
-    matrix_spec = _bundle_matrix_spec(bundle)
-    execution_run_spec = _bundle_execution_run_spec(bundle)
-    analysis_summary = _bundle_analysis_merge_summary(bundle)
-
-    matrix_metadata = _mapping_or_empty(_get_field(matrix_spec, "metadata"))
-    execution_parameters = _mapping_or_empty(_get_field(execution_run_spec, "parameters"))
-
-    analysis_bundle_manifest_path = _first_not_none(
-        str(paths.manifest_path) if paths is not None else None,
-        manifest.get("manifest_path"),
-        matrix_metadata.get("analysis_bundle_manifest_path"),
-        execution_parameters.get("analysis_bundle_manifest_path"),
-    )
-
-    matrix_id = _first_not_none(
-        _get_field(matrix_spec, "matrix_id"),
-        analysis_summary.get("matrix_id"),
-    )
-
-    run_id = _first_not_none(
-        _get_field(execution_run_spec, "run_id"),
-        manifest.get("run_id"),
-    )
-
-    matrix_shape = _build_matrix_shape(
-        analysis_summary=analysis_summary,
-        matrix_metadata=matrix_metadata,
-        execution_parameters=execution_parameters,
-    )
-
-    sample_axis = _first_not_none(
-        analysis_summary.get("sample_axis"),
-        matrix_metadata.get("sample_axis_kind"),
-        execution_parameters.get("sample_axis"),
-    )
-
-    feature_id_system = _first_not_none(
-        analysis_summary.get("feature_id_system"),
-        _get_field(matrix_spec, "feature_id_system"),
-        matrix_metadata.get("feature_id_system"),
-    )
-
-    column_order_specimen_ids = _first_not_none(
-        analysis_summary.get("column_order_specimen_ids"),
-        matrix_metadata.get("column_order_specimen_ids"),
-        execution_parameters.get("column_order_specimen_ids"),
-        [],
-    )
-    column_order_specimen_ids = _sequence_or_empty(column_order_specimen_ids)
-
-    source_quantifier_summary = _first_not_none(
-        analysis_summary.get("source_quantifier_summary"),
-        execution_parameters.get("source_quantifier_summary"),
-        {},
-    )
-    source_quantifier_summary = _mapping_or_empty(source_quantifier_summary)
-
-    feature_annotation_status = _first_not_none(
-        analysis_summary.get("feature_annotation_status"),
-        matrix_metadata.get("feature_annotation_status"),
-        execution_parameters.get("feature_annotation_status"),
-    )
-    if isinstance(feature_annotation_status, Mapping):
-        feature_annotation_status = dict(feature_annotation_status)
-
-    sample_metadata_alignment_status = _first_not_none(
-        analysis_summary.get("sample_metadata_alignment_status"),
-        analysis_summary.get("sample_metadata_alignment"),
-        execution_parameters.get("sample_metadata_alignment_status"),
-    )
-    if isinstance(sample_metadata_alignment_status, Mapping):
-        sample_metadata_alignment_status = dict(sample_metadata_alignment_status)
-
-    warning_summary = _build_warning_summary(
-        analysis_summary=analysis_summary,
-        matrix_metadata=matrix_metadata,
-        execution_parameters=execution_parameters,
-    )
 
     return {
         "contract_name": manifest.get("contract_name"),
@@ -930,15 +1006,17 @@ def summarize_analysis_bundle_for_consumer(
         "bundle_kind": manifest.get("bundle_kind"),
         "producer": manifest.get("producer"),
         "producer_version": manifest.get("producer_version"),
-        "matrix_id": matrix_id,
-        "run_id": run_id,
-        "matrix_shape": matrix_shape,
-        "sample_axis": sample_axis,
-        "feature_id_system": feature_id_system,
-        "column_order_specimen_ids": column_order_specimen_ids,
-        "source_quantifier_summary": source_quantifier_summary,
-        "feature_annotation_status": feature_annotation_status,
-        "sample_metadata_alignment_status": sample_metadata_alignment_status,
-        "warning_summary": warning_summary,
-        "analysis_bundle_manifest_path": analysis_bundle_manifest_path,
+        "matrix_id": get_bundle_matrix_id(bundle),
+        "run_id": get_bundle_run_id(bundle),
+        "matrix_shape": get_bundle_matrix_shape(bundle),
+        "sample_axis": get_bundle_sample_axis(bundle),
+        "feature_id_system": get_bundle_feature_id_system(bundle),
+        "column_order_specimen_ids": get_bundle_column_order_specimen_ids(bundle),
+        "source_quantifier_summary": get_bundle_source_quantifier_summary(bundle),
+        "feature_annotation_status": get_bundle_feature_annotation_status(bundle),
+        "sample_metadata_alignment_status": get_bundle_sample_metadata_alignment_status(
+            bundle
+        ),
+        "warning_summary": get_bundle_warning_summary(bundle),
+        "analysis_bundle_manifest_path": get_bundle_manifest_path(bundle),
     }
