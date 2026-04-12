@@ -5,6 +5,8 @@ from pathlib import Path
 
 from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import load_tx2gene_map, build_transcript_quant_table, aggregate_transcript_to_gene
+from iwa_rnaseq_counter.builders.execution_run_builder import build_execution_run_spec_for_success, build_execution_run_spec_for_failure
+from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 from ..models.assay import AssaySpec
 from ..models.matrix import MatrixSpec
 from ..models.execution_run import ExecutionRunSpec
@@ -119,91 +121,87 @@ def run_counter_pipeline(
         tx2gene = assay_spec.reference_resources.tx2gene_path
         annotation_gtf = assay_spec.reference_resources.annotation_gtf_path
 
-    # Quantifier execution via Registry (v0.7.0)
-    quant = get_quantifier(quantifier)
-    capabilities = quant.get_capabilities()
-    
-    reqs = capabilities.reference_requirements
-    if reqs.quantifier_index == "required" and not quantifier_index:
-        raise ValueError(f"{quant.name} requires quantifier_index.")
-    if reqs.tx2gene == "required" and not tx2gene:
-        raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
-    if reqs.annotation_gtf == "required" and not annotation_gtf:
-        raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
+    try:
+        # Step 1: Validation
+        quant = get_quantifier(quantifier)
+        capabilities = quant.get_capabilities()
+        
+        reqs = capabilities.reference_requirements
+        if reqs.quantifier_index == "required" and not quantifier_index:
+            raise ValueError(f"{quant.name} requires quantifier_index.")
+        if reqs.tx2gene == "required" and not tx2gene:
+            raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
+        if reqs.annotation_gtf == "required" and not annotation_gtf:
+            raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
 
-    run_result = quant.run_quant(
-        sample_df=sample_df,
-        run_output_dir=outdir,
-        threads=threads,
-        strandedness_mode=assay_spec.strandedness or "Auto-detect",
-        reference_config={
-            "quantifier_index": quantifier_index,
-            "tx2gene_path": tx2gene,
-            "annotation_gtf_path": annotation_gtf,
-        },
-    )
+        # Step 2: Quantifier execution
+        run_result = quant.run_quant(
+            sample_df=sample_df,
+            run_output_dir=outdir,
+            threads=threads,
+            strandedness_mode=assay_spec.strandedness or "Auto-detect",
+            reference_config={
+                "quantifier_index": quantifier_index,
+                "tx2gene_path": tx2gene,
+                "annotation_gtf_path": annotation_gtf,
+            },
+        )
 
-    # Aggregation entry point (v0.7.0)
-    g_nr_df = _build_gene_numreads_matrix(run_result, tx2gene, capabilities.aggregation_input_kind)
+        # Step 3: Aggregation
+        try:
+            g_nr_df = _build_gene_numreads_matrix(run_result, tx2gene, capabilities.aggregation_input_kind)
+        except Exception as agg_err:
+            # Wrap aggregation error specifically if needed, or let it slide to general handler
+            raise RuntimeError(f"Aggregation failed: {agg_err}") from agg_err
 
-    matrix_path = counts_dir / "gene_numreads.tsv"
-    g_nr_df.to_csv(matrix_path, sep="\t")
-    
-    # v0.5.1: Prepare standardized feature_annotation.tsv
-    from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
-    annotation_out = get_standard_annotation_path(outdir)
-    # Ensure results dir exists
-    (outdir / "results").mkdir(exist_ok=True)
-    has_annotation = prepare_feature_annotation(tx2gene, annotation_out)
+        matrix_path = counts_dir / "gene_numreads.tsv"
+        g_nr_df.to_csv(matrix_path, sep="\t")
+        
+        # v0.5.1: Prepare standardized feature_annotation.tsv
+        from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
+        annotation_out = get_standard_annotation_path(outdir)
+        # Ensure results dir exists
+        (outdir / "results").mkdir(exist_ok=True)
+        has_annotation = prepare_feature_annotation(tx2gene, annotation_out)
 
-    subject_id = assay_spec.metadata.get("subject_id")
-    source_subject_ids = [subject_id] if subject_id else []
+        subject_id = assay_spec.metadata.get("subject_id")
+        source_subject_ids = [subject_id] if subject_id else []
 
-    matrix_spec = MatrixSpec(
-        schema_name="MatrixSpec",
-        schema_version="0.1.0",
-        matrix_id=f"MAT_{assay_spec.assay_id}",
-        matrix_scope="assay",
-        matrix_kind="count_matrix",
-        feature_type="gene",
-        value_type="integer",
-        normalization="raw",
-        feature_id_system="ensembl_gene_id",
-        # Use specimen as axis
-        sample_axis="specimen",
-        matrix_path=str(matrix_path.resolve()),
-        feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
-        source_assay_ids=[assay_spec.assay_id],
-        source_specimen_ids=[assay_spec.specimen_id],
-        source_subject_ids=source_subject_ids,
-        metadata={
-            "producer_app": "iwa_rnaseq_counter",
-            "producer_version": "0.3.5",
-            "quantifier": run_result["quantifier"],
-            "quantifier_version": run_result.get("quantifier_version"),
-            "aggregation_input_kind": capabilities.aggregation_input_kind,
-            "reference_context": run_result.get("reference_context", {}),
-            "quantifier_index_path": str(quantifier_index),
-            "tx2gene_path": str(tx2gene) if tx2gene else None,
-            "annotation_gtf_path": str(annotation_gtf) if annotation_gtf else None,
-            "sample_ids": [assay_spec.specimen_id],
-            "feature_id_system_inferred": False,
-            "feature_annotation_available": has_annotation,
-        },
-        overlay={},
-    )
+        matrix_spec = MatrixSpec(
+            schema_name="MatrixSpec",
+            schema_version="0.1.0",
+            matrix_id=f"MAT_{assay_spec.assay_id}",
+            matrix_scope="assay",
+            matrix_kind="count_matrix",
+            feature_type="gene",
+            value_type="integer",
+            normalization="raw",
+            feature_id_system="ensembl_gene_id",
+            # Use specimen as axis
+            sample_axis="specimen",
+            matrix_path=str(matrix_path.resolve()),
+            feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
+            source_assay_ids=[assay_spec.assay_id],
+            source_specimen_ids=[assay_spec.specimen_id],
+            source_subject_ids=source_subject_ids,
+            metadata={
+                "producer_app": "iwa_rnaseq_counter",
+                "producer_version": "0.3.5",
+                "quantifier": run_result["quantifier"],
+                "quantifier_version": run_result.get("quantifier_version"),
+                "aggregation_input_kind": capabilities.aggregation_input_kind,
+                "reference_context": run_result.get("reference_context", {}),
+                "quantifier_index_path": str(quantifier_index),
+                "tx2gene_path": str(tx2gene) if tx2gene else None,
+                "annotation_gtf_path": str(annotation_gtf) if annotation_gtf else None,
+                "sample_ids": [assay_spec.specimen_id],
+                "feature_id_system_inferred": False,
+                "feature_annotation_available": has_annotation,
+            },
+            overlay={},
+        )
 
-    finished_at = datetime.now(timezone.utc).astimezone().isoformat()
-
-    run_spec = ExecutionRunSpec(
-        schema_name="ExecutionRunSpec",
-        schema_version="0.1.0",
-        run_id=run_id or f"RUN_COUNTER_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        app_name="iwa_rnaseq_counter",
-        app_version="0.3.5",
-        input_refs=[assay_spec.assay_id],
-        output_refs=[matrix_spec.matrix_id],
-        parameters={
+        parameters = {
             "quantifier": run_result["quantifier"],
             "quantifier_version": run_result.get("quantifier_version"),
             "aggregation_input_kind": capabilities.aggregation_input_kind,
@@ -214,16 +212,60 @@ def run_counter_pipeline(
             "quantifier_index_path": str(quantifier_index),
             "tx2gene_path": str(tx2gene) if tx2gene else None,
             "annotation_gtf_path": str(annotation_gtf) if annotation_gtf else None,
-        },
-        execution_backend=profile,
-        started_at=started_at,
-        finished_at=finished_at,
-        status="completed",
-        log_path=str((logs_dir / "run.log").resolve()),
-        preprocessing_steps={
-            "qc": ExecutionStepRecord(enabled=False, status="not_run"),
-            "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
         }
-    )
-    
-    return matrix_spec, run_spec
+
+        run_spec = build_execution_run_spec_for_success(
+            run_id=run_id or f"RUN_COUNTER_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            app_version="0.3.5",
+            started_at=started_at,
+            input_refs=[assay_spec.assay_id],
+            output_refs=[matrix_spec.matrix_id],
+            parameters=parameters,
+            execution_backend=profile,
+            log_path=str((logs_dir / "run.log").resolve()),
+            preprocessing_steps={
+                "qc": ExecutionStepRecord(enabled=False, status="not_run"),
+                "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
+            }
+        )
+        
+        return matrix_spec, run_spec
+
+    except Exception as e:
+        # Determine failure stage
+        # This is a bit heuristic but better than nothing
+        stage = "unknown"
+        if "quantifier" in str(e).lower() or "reference" in str(e).lower():
+            stage = "quantifier"
+        elif "aggregation" in str(e).lower() or "gene_counts" in str(e).lower():
+            stage = "aggregation"
+        elif "assay" in str(e).lower() or "input" in str(e).lower():
+            stage = "intake"
+
+        # Parameters on failure
+        fail_params = {
+            "quantifier": quantifier,
+            "threads": threads,
+            "profile": profile,
+            "quantifier_index_path": str(quantifier_index) if quantifier_index else None,
+        }
+
+        fail_spec = build_execution_run_spec_for_failure(
+            run_id=run_id or f"RUN_COUNTER_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            app_version="0.3.5",
+            started_at=started_at,
+            input_refs=[assay_spec.assay_id],
+            parameters=fail_params,
+            execution_backend=profile,
+            log_path=str((logs_dir / "run.log").resolve()),
+            failure_stage=stage,
+            failure_summary=str(e)
+        )
+        
+        # Write failure spec immediately
+        spec_path = outdir / "specs" / "execution-run.spec.json"
+        write_execution_run_spec(fail_spec, spec_path)
+        logger.error(f"Pipeline failed at stage '{stage}': {e}. Record written to {spec_path}")
+        
+        raise e
+

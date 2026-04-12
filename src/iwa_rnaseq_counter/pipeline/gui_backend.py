@@ -8,6 +8,8 @@ from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
 from iwa_rnaseq_counter.legacy.gene_aggregator import build_transcript_quant_table, aggregate_transcript_to_gene, load_tx2gene_map, save_quant_tables
 from iwa_rnaseq_counter.legacy.run_artifacts import save_dataset_manifest
 from iwa_rnaseq_counter.builders.gui_artifact_export import write_gui_supporting_inputs
+from iwa_rnaseq_counter.builders.execution_run_builder import build_execution_run_spec_for_failure
+from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 
 logger = logging.getLogger(__name__)
  
@@ -98,204 +100,242 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     quantifier_version = config_data.get("quantifier_version")
     annotation_gtf_path = config_data.get("annotation_gtf_path")
     
-    logger.info(f"Step 1: Running {quantifier_name} for all samples...")
-    quant = get_quantifier(quantifier_name)
-    capabilities = quant.get_capabilities()
-    
-    reqs = capabilities.reference_requirements
-    if reqs.quantifier_index == "required" and not quantifier_index_path:
-        raise ValueError(f"{quant.name} requires quantifier_index_path.")
-    if reqs.tx2gene == "required" and not tx2gene_path:
-        raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
-    if reqs.annotation_gtf == "required" and not annotation_gtf_path:
-        raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
-
-    run_result = quant.run_quant(
-        sample_df=sample_df,
-        run_output_dir=run_dir,
-        threads=threads,
-        strandedness_mode=strandedness_mode,
-        reference_config={
-            "quantifier_index": quantifier_index_path,
-            "tx2gene_path": tx2gene_path,
-            "annotation_gtf_path": annotation_gtf_path,
-        },
-    )
-
-    quantifier_name = run_result.get("quantifier", quantifier_name)
-    quantifier_version = (
-        run_result.get("quantifier_version")
-        or quantifier_version
-        or "unknown"
-    )
-    
-    outputs = run_result["outputs"]
-    failure_count = len(outputs) - len([o for o in outputs if o.get("is_success")])
-    
-    success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df = _build_gui_matrices_from_run_result(
-        run_result,
-        capabilities,
-        tx2gene_path,
-    )
-
-    logger.info(f"Step 2: Aggregating {len(success_outputs)} successful results...")
-    
-    input_source = "unknown"
-    if "input_source" in sample_df.columns and not sample_df.empty:
-        input_source = str(sample_df["input_source"].iloc[0])
-        
-    from iwa_rnaseq_counter.legacy.sample_parser import METADATA_COLUMNS
-    sample_metadata_columns = [c for c in METADATA_COLUMNS if c in sample_df.columns]
-    
-    sample_metadata_columns_nonempty = []
-    for col in sample_metadata_columns:
-        if col == "exclude":
-            if sample_df[col].fillna(False).astype(bool).any():
-                sample_metadata_columns_nonempty.append(col)
-        else:
-            if sample_df[col].fillna("").astype(str).str.strip().replace("nan", "").ne("").any():
-                sample_metadata_columns_nonempty.append(col)
-                
-    sample_ids_all = sample_df["sample_id"].tolist()
-    sample_ids_success = [o["sample_id"] for o in success_outputs]
-    sample_ids_failed = [o["sample_id"] for o in outputs if not o.get("is_success")]
-    sample_ids_aggregated = sample_ids_success
-    
-    rel_outputs = []
-    for o in outputs:
-        rel_o = o.copy()
-        for key in [
-            "quant_path",
-            "transcript_quant_path",
-            "gene_counts_path",
-            "aux_info_dir",
-            "meta_info_json",
-            "log_path",
-            "output_dir",
-        ]:
-            if rel_o.get(key):
-                try:
-                    rel_o[key] = str(Path(rel_o[key]).relative_to(run_dir))
-                except ValueError:
-                    pass
-        rel_outputs.append(rel_o)
-        
-
-
-    # v0.8.2 canonical summary keys:
-    # quantifier / quantifier_version / aggregation_input_kind /
-    # quantifier_index_path / tx2gene_path / annotation_gtf_path
-    #
-    # top-level reference paths are kept as absolute paths.
-    # per-output paths may be relativized only in disk_summary["outputs"].
-    run_summary = {
-        "analysis_name": analysis_name,
-        "run_name": analysis_name,
-        "quantifier": quantifier_name,
-        "quantifier_version": quantifier_version,
-        "aggregation_input_kind": capabilities.aggregation_input_kind,
-        "quantifier_index_path": str(quantifier_index_path) if quantifier_index_path else None,
-        "tx2gene_path": str(tx2gene_path) if tx2gene_path else None,
-        "annotation_gtf_path": str(annotation_gtf_path) if annotation_gtf_path else None,
-        "sample_count": len(sample_df),
-        "success_count": len(success_outputs),
-        "failure_count": failure_count,
-        "sample_ids_all": sample_ids_all,
-        "sample_ids_success": sample_ids_success,
-        "sample_ids_failed": sample_ids_failed,
-        "transcript_rows": len(t_tpm_df),
-        "gene_rows": len(g_nr_df),
-        "has_mapping_metrics": capabilities.has_mapping_metrics,
-        "has_transcript_quant": capabilities.has_transcript_quant,
-        "has_gene_counts": capabilities.has_gene_counts,
-        "outputs": outputs,
-        # Extended / compatibility fields
-        "elapsed_seconds": time.time() - start_time,
-        "save_path": str(run_dir),
-        "input_source": input_source,
-        "sample_metadata_columns": sample_metadata_columns,
-        "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
-        "sample_ids_aggregated": sample_ids_aggregated,
-        "strandedness": config_data.get("strandedness_prediction"),
-        "threads": threads,
-        "log_summary": run_result.get("log_summary", "")
-    }
-    
-    disk_summary = run_summary.copy()
-    disk_summary["save_path"] = run_dir.name
-    disk_summary["outputs"] = rel_outputs
-
-    matrices = {
-        "transcript_tpm": t_tpm_df, "transcript_numreads": t_nr_df,
-        "gene_tpm": g_tpm_df, "gene_numreads": g_nr_df
-    }
-    
-    output_paths = save_quant_tables(
-        matrices=matrices,
-        sample_df=sample_df,
-        run_summary=disk_summary,
-        run_output_dir=run_dir
-    )
-    
-    # Step 3: Prepare feature_annotation.tsv (v0.5.0 Contract)
-    from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
-    annotation_out = get_standard_annotation_path(run_dir)
-    has_annotation = prepare_feature_annotation(tx2gene_path, annotation_out)
-    
-    if has_annotation:
-        logger.info(f"Feature annotation prepared at {annotation_out}")
-    else:
-        logger.warning("Could not prepare feature_annotation.tsv. Reporter will fall back to feature_id.")
-
-    manifest_data = {
-        "manifest_version": "1.0",
-        "generated_at": datetime.now().astimezone().isoformat(),
-        "app_name": "iwa-rnaseq-counter",
-        "app_version": "0.3.5",
-        "run_name": analysis_name,
-        "analysis_name": analysis_name,
-        "input_source": input_source,
-        "quantifier": quantifier_name,
-        "quantifier_version": quantifier_version,
-        "sample_count_total": len(sample_ids_all),
-        "sample_count_success": len(sample_ids_success),
-        "sample_count_failed": len(sample_ids_failed),
-        "sample_ids_all": sample_ids_all,
-        "sample_ids_success": sample_ids_success,
-        "sample_ids_failed": sample_ids_failed,
-        "sample_ids_aggregated": sample_ids_aggregated,
-        "results_dir": "results",
-        "files": {
-            "sample_metadata": "results/sample_metadata.csv",
-            "sample_qc_summary": "results/sample_qc_summary.csv",
-            "transcript_tpm": "results/transcript_tpm.csv",
-            "transcript_numreads": "results/transcript_numreads.csv",
-            "gene_tpm": "results/gene_tpm.csv",
-            "gene_numreads": "results/gene_numreads.csv",
-            "run_summary": "results/run_summary.json",
-            "sample_sheet": "sample_sheet.csv",
-            "run_config": "run_config.json",
-            "run_log": "logs/run.log"
-        }
-    }
-    
-    if has_annotation:
-        manifest_data["files"]["feature_annotation"] = "results/feature_annotation.tsv"
-    
-    save_dataset_manifest(run_dir, manifest_data)
-    
     try:
-        write_gui_supporting_inputs(
-            run_dir=run_dir,
-            run_summary=run_summary,
-            matrix_rel_path="results/gene_numreads.csv",
-            log_rel_path="logs/run.log",
-            started_at=started_at_iso,
-            feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
-            feature_annotation_available=has_annotation
-        )
-    except Exception as spec_err:
-        logger.warning(f"Failed to generate pipeline specs: {spec_err}")
+        logger.info(f"Step 1: Running {quantifier_name} for all samples...")
+        quant = get_quantifier(quantifier_name)
+        capabilities = quant.get_capabilities()
         
-    logger.info("Pipeline completed successfully.")
-    return True
+        reqs = capabilities.reference_requirements
+        if reqs.quantifier_index == "required" and not quantifier_index_path:
+            raise ValueError(f"{quant.name} requires quantifier_index_path.")
+        if reqs.tx2gene == "required" and not tx2gene_path:
+            raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
+        if reqs.annotation_gtf == "required" and not annotation_gtf_path:
+            raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
+
+        run_result = quant.run_quant(
+            sample_df=sample_df,
+            run_output_dir=run_dir,
+            threads=threads,
+            strandedness_mode=strandedness_mode,
+            reference_config={
+                "quantifier_index": quantifier_index_path,
+                "tx2gene_path": tx2gene_path,
+                "annotation_gtf_path": annotation_gtf_path,
+            },
+        )
+
+        quantifier_name = run_result.get("quantifier", quantifier_name)
+        quantifier_version = (
+            run_result.get("quantifier_version")
+            or quantifier_version
+            or "unknown"
+        )
+        
+        outputs = run_result["outputs"]
+        failure_count = len(outputs) - len([o for o in outputs if o.get("is_success")])
+        
+        success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df = _build_gui_matrices_from_run_result(
+            run_result,
+            capabilities,
+            tx2gene_path,
+        )
+
+        logger.info(f"Step 2: Aggregating {len(success_outputs)} successful results...")
+        
+        input_source = "unknown"
+        if "input_source" in sample_df.columns and not sample_df.empty:
+            input_source = str(sample_df["input_source"].iloc[0])
+            
+        from iwa_rnaseq_counter.legacy.sample_parser import METADATA_COLUMNS
+        sample_metadata_columns = [c for c in METADATA_COLUMNS if c in sample_df.columns]
+        
+        sample_metadata_columns_nonempty = []
+        for col in sample_metadata_columns:
+            if col == "exclude":
+                if sample_df[col].fillna(False).astype(bool).any():
+                    sample_metadata_columns_nonempty.append(col)
+            else:
+                if sample_df[col].fillna("").astype(str).str.strip().replace("nan", "").ne("").any():
+                    sample_metadata_columns_nonempty.append(col)
+                    
+        sample_ids_all = sample_df["sample_id"].tolist()
+        sample_ids_success = [o["sample_id"] for o in success_outputs]
+        sample_ids_failed = [o["sample_id"] for o in outputs if not o.get("is_success")]
+        sample_ids_aggregated = sample_ids_success
+        
+        rel_outputs = []
+        for o in outputs:
+            rel_o = o.copy()
+            for key in [
+                "quant_path",
+                "transcript_quant_path",
+                "gene_counts_path",
+                "aux_info_dir",
+                "meta_info_json",
+                "log_path",
+                "output_dir",
+            ]:
+                if rel_o.get(key):
+                    try:
+                        rel_o[key] = str(Path(rel_o[key]).relative_to(run_dir))
+                    except ValueError:
+                        pass
+            rel_outputs.append(rel_o)
+            
+
+
+        # v0.8.2 canonical summary keys:
+        # quantifier / quantifier_version / aggregation_input_kind /
+        # quantifier_index_path / tx2gene_path / annotation_gtf_path
+        #
+        # top-level reference paths are kept as absolute paths.
+        # per-output paths may be relativized only in disk_summary["outputs"].
+        run_summary = {
+            "analysis_name": analysis_name,
+            "run_name": analysis_name,
+            "quantifier": quantifier_name,
+            "quantifier_version": quantifier_version,
+            "aggregation_input_kind": capabilities.aggregation_input_kind,
+            "quantifier_index_path": str(quantifier_index_path) if quantifier_index_path else None,
+            "tx2gene_path": str(tx2gene_path) if tx2gene_path else None,
+            "annotation_gtf_path": str(annotation_gtf_path) if annotation_gtf_path else None,
+            "sample_count": len(sample_df),
+            "success_count": len(success_outputs),
+            "failure_count": failure_count,
+            "sample_ids_all": sample_ids_all,
+            "sample_ids_success": sample_ids_success,
+            "sample_ids_failed": sample_ids_failed,
+            "transcript_rows": len(t_tpm_df),
+            "gene_rows": len(g_nr_df),
+            "has_mapping_metrics": capabilities.has_mapping_metrics,
+            "has_transcript_quant": capabilities.has_transcript_quant,
+            "has_gene_counts": capabilities.has_gene_counts,
+            "outputs": outputs,
+            # Extended / compatibility fields
+            "elapsed_seconds": time.time() - start_time,
+            "save_path": str(run_dir),
+            "input_source": input_source,
+            "sample_metadata_columns": sample_metadata_columns,
+            "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
+            "sample_ids_aggregated": sample_ids_aggregated,
+            "strandedness": config_data.get("strandedness_prediction"),
+            "threads": threads,
+            "log_summary": run_result.get("log_summary", "")
+        }
+        
+        disk_summary = run_summary.copy()
+        disk_summary["save_path"] = run_dir.name
+        disk_summary["outputs"] = rel_outputs
+
+        matrices = {
+            "transcript_tpm": t_tpm_df, "transcript_numreads": t_nr_df,
+            "gene_tpm": g_tpm_df, "gene_numreads": g_nr_df
+        }
+        
+        output_paths = save_quant_tables(
+            matrices=matrices,
+            sample_df=sample_df,
+            run_summary=disk_summary,
+            run_output_dir=run_dir
+        )
+        
+        # Step 3: Prepare feature_annotation.tsv (v0.5.0 Contract)
+        from iwa_rnaseq_counter.legacy.annotation_helper import prepare_feature_annotation, get_standard_annotation_path
+        annotation_out = get_standard_annotation_path(run_dir)
+        has_annotation = prepare_feature_annotation(tx2gene_path, annotation_out)
+        
+        if has_annotation:
+            logger.info(f"Feature annotation prepared at {annotation_out}")
+        else:
+            logger.warning("Could not prepare feature_annotation.tsv. Reporter will fall back to feature_id.")
+
+        manifest_data = {
+            "manifest_version": "1.0",
+            "generated_at": datetime.now().astimezone().isoformat(),
+            "app_name": "iwa-rnaseq-counter",
+            "app_version": "0.3.5",
+            "run_name": analysis_name,
+            "analysis_name": analysis_name,
+            "input_source": input_source,
+            "quantifier": quantifier_name,
+            "quantifier_version": quantifier_version,
+            "sample_count_total": len(sample_ids_all),
+            "sample_count_success": len(sample_ids_success),
+            "sample_count_failed": len(sample_ids_failed),
+            "sample_ids_all": sample_ids_all,
+            "sample_ids_success": sample_ids_success,
+            "sample_ids_failed": sample_ids_failed,
+            "sample_ids_aggregated": sample_ids_aggregated,
+            "results_dir": "results",
+            "files": {
+                "sample_metadata": "results/sample_metadata.csv",
+                "sample_qc_summary": "results/sample_qc_summary.csv",
+                "transcript_tpm": "results/transcript_tpm.csv",
+                "transcript_numreads": "results/transcript_numreads.csv",
+                "gene_tpm": "results/gene_tpm.csv",
+                "gene_numreads": "results/gene_numreads.csv",
+                "run_summary": "results/run_summary.json",
+                "sample_sheet": "sample_sheet.csv",
+                "run_config": "run_config.json",
+                "run_log": "logs/run.log"
+            }
+        }
+        
+        if has_annotation:
+            manifest_data["files"]["feature_annotation"] = "results/feature_annotation.tsv"
+        
+        save_dataset_manifest(run_dir, manifest_data)
+        
+        try:
+            write_gui_supporting_inputs(
+                run_dir=run_dir,
+                run_summary=run_summary,
+                matrix_rel_path="results/gene_numreads.csv",
+                log_rel_path="logs/run.log",
+                started_at=started_at_iso,
+                feature_annotation_path=str(annotation_out.resolve()) if has_annotation else None,
+                feature_annotation_available=has_annotation
+            )
+        except Exception as spec_err:
+            logger.warning(f"Failed to generate pipeline specs: {spec_err}")
+            
+        logger.info("Pipeline completed successfully.")
+        return True
+
+    except Exception as e:
+        logger.error(f"GUI Backend pipeline failed: {e}")
+        
+        # Heuristic stage determination
+        stage = "unknown"
+        if "quantifier" in str(e).lower() or "reference" in str(e).lower():
+            stage = "quantifier"
+        elif "aggregation" in str(e).lower():
+            stage = "aggregation"
+        
+        # Record failure spec
+        fail_params = {
+            "run_origin": "gui",
+            "quantifier": quantifier_name,
+            "input_dir": str(config_data.get("input_dir", "")),
+            "quantifier_index_path": str(quantifier_index_path) if quantifier_index_path else None,
+        }
+        
+        fail_spec = build_execution_run_spec_for_failure(
+            run_id=analysis_name,
+            app_version="0.3.5",
+            started_at=started_at_iso,
+            input_refs=[], # Assay IDs not yet synthesized on early crash
+            parameters=fail_params,
+            execution_backend="local-gui",
+            log_path=str((run_dir / "logs" / "run.log").resolve()),
+            failure_stage=stage,
+            failure_summary=str(e)
+        )
+        
+        spec_path = run_dir / "specs" / "execution-run.spec.json"
+        write_execution_run_spec(fail_spec, spec_path)
+        logger.error(f"Failure record written to {spec_path}")
+        
+        return False
+

@@ -7,6 +7,7 @@ from iwa_rnaseq_counter.models.execution_run import ExecutionRunSpec
 from iwa_rnaseq_counter.models.execution_step import ExecutionStepRecord
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
+from iwa_rnaseq_counter.builders.execution_run_builder import build_execution_run_spec_for_success
 
 logger = logging.getLogger(__name__)
 
@@ -117,23 +118,21 @@ def build_execution_run_spec_from_gui_result(
     sample_ids = run_summary.get("sample_ids_success", [])
     assay_ids = [f"ASSAY_{sid}" for sid in sample_ids]
     
-    return ExecutionRunSpec(
-        schema_name="ExecutionRunSpec",
-        schema_version="0.1.0",
+    return build_execution_run_spec_for_success(
         run_id=run_name,
-        app_name="iwa_rnaseq_counter",
         app_version="0.3.5",
+        started_at=started_at,
         input_refs=assay_ids,
         output_refs=[matrix_spec.matrix_id],
         parameters=parameters,
         execution_backend="local-gui",
-        started_at=started_at,
-        finished_at=datetime.now(timezone.utc).astimezone().isoformat(),
-        status="completed" if run_summary.get("failure_count", 1) == 0 else "completed_with_errors",
         log_path=str(log_abs_path),
         preprocessing_steps={
             "qc": ExecutionStepRecord(enabled=False, status="not_run"),
             "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
+        },
+        metadata={
+            "status_detail": "completed" if run_summary.get("failure_count", 1) == 0 else "completed_with_errors"
         }
     )
 
