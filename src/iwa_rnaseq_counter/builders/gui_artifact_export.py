@@ -4,6 +4,7 @@ from pathlib import Path
 
 from iwa_rnaseq_counter.models.matrix import MatrixSpec
 from iwa_rnaseq_counter.models.execution_run import ExecutionRunSpec
+from iwa_rnaseq_counter.models.execution_step import ExecutionStepRecord
 from iwa_rnaseq_counter.io.write_matrix_spec import write_matrix_spec
 from iwa_rnaseq_counter.io.write_execution_run_spec import write_execution_run_spec
 
@@ -129,7 +130,11 @@ def build_execution_run_spec_from_gui_result(
         started_at=started_at,
         finished_at=datetime.now(timezone.utc).astimezone().isoformat(),
         status="completed" if run_summary.get("failure_count", 1) == 0 else "completed_with_errors",
-        log_path=str(log_abs_path)
+        log_path=str(log_abs_path),
+        preprocessing_steps={
+            "qc": ExecutionStepRecord(enabled=False, status="not_run"),
+            "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
+        }
     )
 
 def write_gui_supporting_inputs(

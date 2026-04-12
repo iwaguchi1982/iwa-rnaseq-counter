@@ -8,6 +8,7 @@ from iwa_rnaseq_counter.legacy.gene_aggregator import load_tx2gene_map, build_tr
 from ..models.assay import AssaySpec
 from ..models.matrix import MatrixSpec
 from ..models.execution_run import ExecutionRunSpec
+from ..models.execution_step import ExecutionStepRecord
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,10 @@ def run_counter_pipeline(
         finished_at=finished_at,
         status="completed",
         log_path=str((logs_dir / "run.log").resolve()),
+        preprocessing_steps={
+            "qc": ExecutionStepRecord(enabled=False, status="not_run"),
+            "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
+        }
     )
     
     return matrix_spec, run_spec
