@@ -1,7 +1,7 @@
 import pytest
 from iwa_rnaseq_counter.models.execution_step import ExecutionStepRecord
 
-def test_execution_step_record_to_dict():
+def test_execution_step_record_warning_to_dict():
     record = ExecutionStepRecord(
         enabled=True,
         status="warning",
@@ -22,6 +22,25 @@ def test_execution_step_record_to_dict():
     
     # Check that Nones are omitted
     assert "error_summary" not in d
+    assert "report_ref" not in d
+
+def test_execution_step_record_failed_to_dict():
+    record = ExecutionStepRecord(
+        enabled=True,
+        status="failed",
+        tool_name="trimmomatic",
+        error_summary="Trimming failed due to invalid adapter sequences",
+        log_ref="file:///path/to/trimming_error.log"
+    )
+    
+    d = record.to_dict()
+    assert d["enabled"] is True
+    assert d["status"] == "failed"
+    assert d["tool_name"] == "trimmomatic"
+    assert d["error_summary"] == "Trimming failed due to invalid adapter sequences"
+    assert d["log_ref"] == "file:///path/to/trimming_error.log"
+    
+    assert "warning_count" not in d
     assert "report_ref" not in d
 
 def test_execution_step_record_default_factory():

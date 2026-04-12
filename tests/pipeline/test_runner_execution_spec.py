@@ -90,3 +90,43 @@ def test_execution_run_spec_includes_preprocessing_steps(mocker):
         assert "preprocessing_steps" in dumped
         assert dumped["preprocessing_steps"]["qc"]["enabled"] is False
         assert dumped["preprocessing_steps"]["qc"]["status"] == "not_run"
+
+def test_execution_run_spec_serialization_with_failed_step():
+    from iwa_rnaseq_counter.models.execution_step import ExecutionStepRecord
+    
+    # Synthetic test to verify ExecutionRunSpec can handle failed steps correctly
+    spec = ExecutionRunSpec(
+        schema_name="ExecutionRunSpec",
+        schema_version="0.1.0",
+        run_id="TEST_RUN_FAILED_STEP",
+        app_name="iwa_rnaseq_counter",
+        app_version="0.3.5",
+        started_at="2026-04-12T00:00:00Z",
+        preprocessing_steps={
+            "trimming": ExecutionStepRecord(
+                enabled=True,
+                status="failed",
+                error_summary="Failed to find adapter sequences",
+                log_ref="file:///path/to/trim_error.log"
+            ),
+            "qc": ExecutionStepRecord(
+                enabled=True,
+                status="warning",
+                warning_count=2,
+                log_ref="file:///path/to/qc.log"
+            )
+        }
+    )
+    
+    d = spec.to_dict()
+    assert "preprocessing_steps" in d
+    
+    trimming = d["preprocessing_steps"]["trimming"]
+    assert trimming["enabled"] is True
+    assert trimming["status"] == "failed"
+    assert trimming["error_summary"] == "Failed to find adapter sequences"
+    assert trimming["log_ref"] == "file:///path/to/trim_error.log"
+    
+    qc = d["preprocessing_steps"]["qc"]
+    assert qc["status"] == "warning"
+    assert qc["warning_count"] == 2
