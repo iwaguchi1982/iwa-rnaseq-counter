@@ -102,9 +102,12 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     quant = get_quantifier(quantifier_name)
     capabilities = quant.get_capabilities()
     
-    if capabilities.requires_tx2gene and not tx2gene_path:
+    reqs = capabilities.reference_requirements
+    if reqs.quantifier_index == "required" and not quantifier_index_path:
+        raise ValueError(f"{quant.name} requires quantifier_index_path.")
+    if reqs.tx2gene == "required" and not tx2gene_path:
         raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
-    if capabilities.requires_annotation_gtf and not annotation_gtf_path:
+    if reqs.annotation_gtf == "required" and not annotation_gtf_path:
         raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
 
     run_result = quant.run_quant(

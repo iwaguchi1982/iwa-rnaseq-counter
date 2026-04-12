@@ -184,21 +184,23 @@ def validate_backend_reference_requirements(
     tx2gene_path: str | None = None,
     annotation_gtf_path: str | None = None,
 ) -> dict:
-    q = str(quantifier or "salmon").strip().lower()
-
-    # STAR は v0.8.0 時点では tx2gene / GTF を必須にしない
-    if q == "star":
+    from iwa_rnaseq_counter.pipeline.quantifiers.registry import get_quantifier
+    
+    try:
+        quant = get_quantifier(quantifier)
+        reqs = quant.get_capabilities().reference_requirements
+        
+        if reqs.tx2gene == "required":
+            res = validate_tx2gene_file(tx2gene_path or "")
+            if not res["is_valid"]: return res
+            
+        if reqs.annotation_gtf == "required":
+            res = validate_annotation_gtf_file(annotation_gtf_path or "")
+            if not res["is_valid"]: return res
+            
         return _valid()
-
-    # transcript-level backends
-    if q in {"salmon", "kallisto"}:
-        return validate_tx2gene_file(tx2gene_path or "")
-
-    # gene-level HISAT2
-    if q == "hisat2":
-        return validate_annotation_gtf_file(annotation_gtf_path or "")
-
-    return _valid()
+    except Exception as e:
+        return _invalid(f"Backend requirement validation failed: {e}")
 
 
 def validate_sample_structure(sample_df: pd.DataFrame | None) -> dict:
@@ -324,9 +326,8 @@ def validate_run_conditions(
     strandedness_result: dict | None = None,
     quantifier: str = "salmon",
     annotation_gtf_path: str | None = None,
-    salmon_index_path: str | None = None,  # backward compatibility
 ) -> dict:
-    resolved_quantifier_index = quantifier_index_path or salmon_index_path or ""
+    resolved_quantifier_index = quantifier_index_path or ""
 
     checks = {
         "fastq_detected": validate_fastq_detected(sample_df),

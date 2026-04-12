@@ -18,7 +18,7 @@ def get_default_session_state() -> dict[str, Any]:
         "fastq_df": None,
         "detected_samples": None,
         "sample_df": None,
-        "salmon_index_path": "",
+        "quantifier_index_path": "",
         "tx2gene_path": "",
         "threads": 4,
         "selected_job_id": None,

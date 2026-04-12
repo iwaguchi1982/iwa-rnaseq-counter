@@ -119,16 +119,16 @@ def run_counter_pipeline(
         tx2gene = assay_spec.reference_resources.tx2gene_path
         annotation_gtf = assay_spec.reference_resources.annotation_gtf_path
 
-    if not quantifier_index:
-        raise ValueError("quantifier_index is required in AssaySpec.reference_resources")
-
     # Quantifier execution via Registry (v0.7.0)
     quant = get_quantifier(quantifier)
     capabilities = quant.get_capabilities()
     
-    if capabilities.requires_tx2gene and not tx2gene:
+    reqs = capabilities.reference_requirements
+    if reqs.quantifier_index == "required" and not quantifier_index:
+        raise ValueError(f"{quant.name} requires quantifier_index.")
+    if reqs.tx2gene == "required" and not tx2gene:
         raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
-    if capabilities.requires_annotation_gtf and not annotation_gtf:
+    if reqs.annotation_gtf == "required" and not annotation_gtf:
         raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
 
     run_result = quant.run_quant(

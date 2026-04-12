@@ -11,8 +11,11 @@ def test_salmon_capabilities():
     assert cap.has_transcript_quant is True
     assert cap.has_gene_counts is False
     assert cap.has_mapping_metrics is True
-    assert cap.requires_tx2gene is True
-    assert cap.requires_annotation_gtf is False
+    
+    req = cap.reference_requirements
+    assert req.quantifier_index == "required"
+    assert req.tx2gene == "required"
+    assert req.annotation_gtf == "unused"
 
 def test_star_capabilities():
     quant = get_quantifier("star")
@@ -23,8 +26,11 @@ def test_star_capabilities():
     assert cap.has_transcript_quant is False
     assert cap.has_gene_counts is True
     assert cap.has_mapping_metrics is False
-    assert cap.requires_tx2gene is False
-    assert cap.requires_annotation_gtf is False
+    
+    req = cap.reference_requirements
+    assert req.quantifier_index == "required"
+    assert req.tx2gene == "unused"
+    assert req.annotation_gtf == "unused"
 
 def test_hisat2_capabilities():
     quant = get_quantifier("hisat2")
@@ -35,8 +41,11 @@ def test_hisat2_capabilities():
     assert cap.has_transcript_quant is False
     assert cap.has_gene_counts is True
     assert cap.has_mapping_metrics is False
-    assert cap.requires_tx2gene is False
-    assert cap.requires_annotation_gtf is True
+    
+    req = cap.reference_requirements
+    assert req.quantifier_index == "required"
+    assert req.tx2gene == "unused"
+    assert req.annotation_gtf == "required"
 
 def test_unsupported_quantifier():
     with pytest.raises(NotImplementedError, match="Unsupported quantifier"):

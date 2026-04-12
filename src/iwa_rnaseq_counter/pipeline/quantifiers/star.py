@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from .base import BaseQuantifier, QuantifierOutput, QuantifierRunResult, BackendCapabilities
+from .base import BaseQuantifier, QuantifierOutput, QuantifierRunResult, BackendCapabilities, BackendReferenceRequirements
 
 
 class StarQuantifier(BaseQuantifier):
@@ -27,8 +27,11 @@ class StarQuantifier(BaseQuantifier):
             has_transcript_quant=False,
             has_gene_counts=True,
             has_mapping_metrics=False,
-            requires_tx2gene=False,
-            requires_annotation_gtf=False
+            reference_requirements=BackendReferenceRequirements(
+                quantifier_index="required",
+                tx2gene="unused",
+                annotation_gtf="unused"
+            )
         )
 
     def resolve_version(self) -> str | None:

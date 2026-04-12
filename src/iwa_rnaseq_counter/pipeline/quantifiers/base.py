@@ -9,6 +9,13 @@ import pandas as pd
 
 
 AggregationInputKind = Literal["transcript_quant", "gene_counts"]
+ReferenceRequirementLevel = Literal["required", "optional", "unused"]
+
+@dataclass
+class BackendReferenceRequirements:
+    quantifier_index: ReferenceRequirementLevel
+    tx2gene: ReferenceRequirementLevel
+    annotation_gtf: ReferenceRequirementLevel
 
 @dataclass
 class BackendCapabilities:
@@ -16,8 +23,15 @@ class BackendCapabilities:
     has_transcript_quant: bool
     has_gene_counts: bool
     has_mapping_metrics: bool
-    requires_tx2gene: bool
-    requires_annotation_gtf: bool
+    reference_requirements: BackendReferenceRequirements
+    
+    @property
+    def requires_tx2gene(self) -> bool:
+        return self.reference_requirements.tx2gene == "required"
+        
+    @property
+    def requires_annotation_gtf(self) -> bool:
+        return self.reference_requirements.annotation_gtf == "required"
 
 class QuantifierOutput(TypedDict, total=False):
     # --- required-ish common keys ---
