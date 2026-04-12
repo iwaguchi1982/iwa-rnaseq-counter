@@ -12,17 +12,16 @@ def build_execution_run_spec_for_success(
     parameters: Dict[str, Any],
     execution_backend: str,
     log_path: str,
+    status: str = "completed",
     preprocessing_steps: Optional[Dict[str, ExecutionStepRecord]] = None,
     metadata: Optional[Dict[str, Any]] = None
 ) -> ExecutionRunSpec:
     """
     Builds a standard ExecutionRunSpec for a successful run.
     """
-    final_metadata = metadata or {}
-    final_metadata.update({
-        "status_detail": "completed successfully",
-        "output_generated": True
-    })
+    final_metadata = metadata.copy() if metadata else {}
+    final_metadata.setdefault("status_detail", "completed successfully")
+    final_metadata.setdefault("output_generated", True)
     
     return ExecutionRunSpec(
         schema_name="ExecutionRunSpec",
@@ -36,7 +35,7 @@ def build_execution_run_spec_for_success(
         parameters=parameters,
         execution_backend=execution_backend,
         finished_at=datetime.now(timezone.utc).astimezone().isoformat(),
-        status="completed",
+        status=status,
         log_path=log_path,
         preprocessing_steps=preprocessing_steps,
         metadata=final_metadata
@@ -59,13 +58,11 @@ def build_execution_run_spec_for_failure(
     """
     Builds a structured ExecutionRunSpec for a failed run.
     """
-    final_metadata = metadata or {}
-    final_metadata.update({
-        "failure_stage": failure_stage,
-        "failure_summary": failure_summary,
-        "error_messages": error_messages or [failure_summary],
-        "output_generated": False
-    })
+    final_metadata = metadata.copy() if metadata else {}
+    final_metadata.setdefault("failure_stage", failure_stage)
+    final_metadata.setdefault("failure_summary", failure_summary)
+    final_metadata.setdefault("error_messages", error_messages or [failure_summary])
+    final_metadata.setdefault("output_generated", False)
     
     return ExecutionRunSpec(
         schema_name="ExecutionRunSpec",

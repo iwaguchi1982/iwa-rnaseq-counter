@@ -96,3 +96,25 @@ def test_runner_records_success_structure(tmp_path, mocker):
     
     assert run_spec.status == "completed"
     assert run_spec.metadata["status_detail"] == "completed successfully"
+
+def test_builder_respects_completed_with_errors():
+    from iwa_rnaseq_counter.builders.execution_run_builder import build_execution_run_spec_for_success
+    
+    run_spec = build_execution_run_spec_for_success(
+        run_id="TEST_RUN",
+        app_version="0.3.5",
+        started_at="2024-04-12T10:00:00Z",
+        input_refs=[],
+        output_refs=[],
+        parameters={},
+        execution_backend="local-gui",
+        log_path="run.log",
+        status="completed_with_errors",
+        metadata={"status_detail": "some samples failed"}
+    )
+    
+    assert run_spec.status == "completed_with_errors"
+    assert run_spec.metadata["status_detail"] == "some samples failed"
+    # Ensure setdefault didn't overwrite
+    assert run_spec.metadata["output_generated"] is True # Default maintained
+

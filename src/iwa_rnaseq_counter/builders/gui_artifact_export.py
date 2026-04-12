@@ -118,6 +118,8 @@ def build_execution_run_spec_from_gui_result(
     sample_ids = run_summary.get("sample_ids_success", [])
     assay_ids = [f"ASSAY_{sid}" for sid in sample_ids]
     
+    status = "completed" if run_summary.get("failure_count", 0) == 0 else "completed_with_errors"
+    
     return build_execution_run_spec_for_success(
         run_id=run_name,
         app_version="0.3.5",
@@ -127,12 +129,13 @@ def build_execution_run_spec_from_gui_result(
         parameters=parameters,
         execution_backend="local-gui",
         log_path=str(log_abs_path),
+        status=status,
         preprocessing_steps={
             "qc": ExecutionStepRecord(enabled=False, status="not_run"),
             "trimming": ExecutionStepRecord(enabled=False, status="not_run"),
         },
         metadata={
-            "status_detail": "completed" if run_summary.get("failure_count", 1) == 0 else "completed_with_errors"
+            "status_detail": status
         }
     )
 
