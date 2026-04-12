@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from .base import BaseQuantifier, QuantifierOutput, QuantifierRunResult
+from .base import BaseQuantifier, QuantifierOutput, QuantifierRunResult, BackendCapabilities
 
 
 class Hisat2Quantifier(BaseQuantifier):
@@ -23,6 +23,16 @@ class Hisat2Quantifier(BaseQuantifier):
     """
 
     name: str = "hisat2"
+
+    def get_capabilities(self) -> BackendCapabilities:
+        return BackendCapabilities(
+            aggregation_input_kind="gene_counts",
+            has_transcript_quant=False,
+            has_gene_counts=True,
+            has_mapping_metrics=False,
+            requires_tx2gene=False,
+            requires_annotation_gtf=True
+        )
 
     def resolve_version(self) -> str | None:
         try:

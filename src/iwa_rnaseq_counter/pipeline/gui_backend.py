@@ -50,15 +50,14 @@ def _build_gene_counts_matrix_from_outputs(success_outputs: list[dict]) -> pd.Da
     return matrix_df
 
 
-def _build_gui_matrices_from_run_result(run_result: dict, tx2gene_path: str):
-    aggregation_input_kind = run_result.get("aggregation_input_kind", "transcript_quant")
+def _build_gui_matrices_from_run_result(run_result: dict, capabilities, tx2gene_path: str):
     outputs = run_result.get("outputs", [])
     success_outputs = [o for o in outputs if o.get("is_success")]
 
     if not success_outputs:
         raise RuntimeError("No successful quantifier outputs found.")
 
-    if aggregation_input_kind == "transcript_quant":
+    if capabilities.aggregation_input_kind == "transcript_quant":
         tx2gene_df = load_tx2gene_map(tx2gene_path)
         t_tpm_df = build_transcript_quant_table(success_outputs, value_type="TPM")
         t_nr_df = build_transcript_quant_table(success_outputs, value_type="NumReads")
@@ -66,7 +65,7 @@ def _build_gui_matrices_from_run_result(run_result: dict, tx2gene_path: str):
         g_nr_df = aggregate_transcript_to_gene(t_nr_df, tx2gene_df)
         return success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df
 
-    if aggregation_input_kind == "gene_counts":
+    if capabilities.aggregation_input_kind == "gene_counts":
         g_nr_df = _build_gene_counts_matrix_from_outputs(success_outputs)
 
         # v0.7.1 最小版:
@@ -77,27 +76,10 @@ def _build_gui_matrices_from_run_result(run_result: dict, tx2gene_path: str):
 
         return success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df
 
-    raise ValueError(f"Unsupported aggregation_input_kind: {aggregation_input_kind!r}")
+    raise ValueError(f"Unsupported aggregation_input_kind: {capabilities.aggregation_input_kind!r}")
 
 
-def _summarize_output_capabilities(outputs: list[dict]) -> dict:
-    success_outputs = [o for o in outputs if o.get("is_success")]
 
-    has_mapping_metrics = any(
-        any(o.get(k) is not None for k in ["num_processed", "num_mapped", "mapping_rate"])
-        for o in success_outputs
-    )
-    has_transcript_quant = any(
-        bool(o.get("transcript_quant_path") or o.get("quant_path"))
-        for o in success_outputs
-    )
-    has_gene_counts = any(bool(o.get("gene_counts_path")) for o in success_outputs)
-
-    return {
-        "has_mapping_metrics": has_mapping_metrics,
-        "has_transcript_quant": has_transcript_quant,
-        "has_gene_counts": has_gene_counts,
-    }
 
 
 def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.DataFrame, started_at_iso: str):
@@ -108,10 +90,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     start_time = time.time()
     
     quantifier_name = config_data.get("quantifier", "salmon")
-    quantifier_index_path = (
-        config_data.get("quantifier_index_path")
-        or config_data.get("salmon_index_path")
-    )
+    quantifier_index_path = config_data.get("quantifier_index_path")
     tx2gene_path = config_data.get("tx2gene_path")
     strandedness_mode = config_data.get("strandedness_mode", "Auto-detect")
     threads = config_data.get("threads", 4)
@@ -121,6 +100,13 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     
     logger.info(f"Step 1: Running {quantifier_name} for all samples...")
     quant = get_quantifier(quantifier_name)
+    capabilities = quant.get_capabilities()
+    
+    if capabilities.requires_tx2gene and not tx2gene_path:
+        raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
+    if capabilities.requires_annotation_gtf and not annotation_gtf_path:
+        raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
+
     run_result = quant.run_quant(
         sample_df=sample_df,
         run_output_dir=run_dir,
@@ -145,6 +131,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
     
     success_outputs, t_tpm_df, t_nr_df, g_tpm_df, g_nr_df = _build_gui_matrices_from_run_result(
         run_result,
+        capabilities,
         tx2gene_path,
     )
 
@@ -190,7 +177,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
                     pass
         rel_outputs.append(rel_o)
         
-    capability_summary = _summarize_output_capabilities(outputs)
+
 
     # v0.8.2 canonical summary keys:
     # quantifier / quantifier_version / aggregation_input_kind /
@@ -203,7 +190,7 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "run_name": analysis_name,
         "quantifier": quantifier_name,
         "quantifier_version": quantifier_version,
-        "aggregation_input_kind": run_result.get("aggregation_input_kind", "transcript_quant"),
+        "aggregation_input_kind": capabilities.aggregation_input_kind,
         "quantifier_index_path": str(quantifier_index_path) if quantifier_index_path else None,
         "tx2gene_path": str(tx2gene_path) if tx2gene_path else None,
         "annotation_gtf_path": str(annotation_gtf_path) if annotation_gtf_path else None,
@@ -215,9 +202,9 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "sample_ids_failed": sample_ids_failed,
         "transcript_rows": len(t_tpm_df),
         "gene_rows": len(g_nr_df),
-        "has_mapping_metrics": capability_summary["has_mapping_metrics"],
-        "has_transcript_quant": capability_summary["has_transcript_quant"],
-        "has_gene_counts": capability_summary["has_gene_counts"],
+        "has_mapping_metrics": capabilities.has_mapping_metrics,
+        "has_transcript_quant": capabilities.has_transcript_quant,
+        "has_gene_counts": capabilities.has_gene_counts,
         "outputs": outputs,
         # Extended / compatibility fields
         "elapsed_seconds": time.time() - start_time,
@@ -226,7 +213,6 @@ def run_gui_backend_pipeline(run_dir: Path, config_data: dict, sample_df: pd.Dat
         "sample_metadata_columns": sample_metadata_columns,
         "sample_metadata_columns_nonempty": sample_metadata_columns_nonempty,
         "sample_ids_aggregated": sample_ids_aggregated,
-        "salmon_index_path": str(quantifier_index_path) if quantifier_index_path else None,
         "strandedness": config_data.get("strandedness_prediction"),
         "threads": threads,
         "log_summary": run_result.get("log_summary", "")

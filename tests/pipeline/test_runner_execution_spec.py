@@ -43,6 +43,13 @@ def test_execution_run_spec_includes_preprocessing_steps(mocker):
             }
         ]
     }
+    
+    mock_capabilities = mocker.MagicMock()
+    mock_capabilities.requires_tx2gene = False
+    mock_capabilities.requires_annotation_gtf = False
+    mock_capabilities.aggregation_input_kind = "transcript_quant"
+    mock_quantifier.get_capabilities.return_value = mock_capabilities
+    
     mocker.patch("iwa_rnaseq_counter.pipeline.runner.get_quantifier", return_value=mock_quantifier)
     
     # Mock transcript to gene aggregation output to avoid actually loading files

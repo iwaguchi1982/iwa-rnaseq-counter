@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
@@ -9,6 +10,14 @@ import pandas as pd
 
 AggregationInputKind = Literal["transcript_quant", "gene_counts"]
 
+@dataclass
+class BackendCapabilities:
+    aggregation_input_kind: AggregationInputKind
+    has_transcript_quant: bool
+    has_gene_counts: bool
+    has_mapping_metrics: bool
+    requires_tx2gene: bool
+    requires_annotation_gtf: bool
 
 class QuantifierOutput(TypedDict, total=False):
     # --- required-ish common keys ---
@@ -71,6 +80,13 @@ class BaseQuantifier(ABC):
     """
 
     name: str = "unknown"
+
+    @abstractmethod
+    def get_capabilities(self) -> BackendCapabilities:
+        """
+        backend の処理能力（出力形式や必須入力要件など）を返す。
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def run_quant(

@@ -5,7 +5,7 @@ from typing import Any
 import pandas as pd
 
 from iwa_rnaseq_counter.legacy.salmon_runner import run_salmon_quant
-from .base import BaseQuantifier, QuantifierRunResult, QuantifierOutput
+from .base import BaseQuantifier, QuantifierRunResult, QuantifierOutput, BackendCapabilities
 
 
 class SalmonQuantifier(BaseQuantifier):
@@ -15,6 +15,16 @@ class SalmonQuantifier(BaseQuantifier):
     """
 
     name: str = "salmon"
+
+    def get_capabilities(self) -> BackendCapabilities:
+        return BackendCapabilities(
+            aggregation_input_kind="transcript_quant",
+            has_transcript_quant=True,
+            has_gene_counts=False,
+            has_mapping_metrics=True,
+            requires_tx2gene=True,
+            requires_annotation_gtf=False
+        )
 
     def run_quant(
         self,

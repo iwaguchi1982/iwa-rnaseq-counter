@@ -56,8 +56,7 @@ def _build_gene_counts_matrix_from_outputs(success_outputs: list[dict]) -> pd.Da
     return matrix_df
 
 
-def _build_gene_numreads_matrix(run_result: dict, tx2gene_path: str | None) -> pd.DataFrame:
-    aggregation_input_kind = run_result.get("aggregation_input_kind", "transcript_quant")
+def _build_gene_numreads_matrix(run_result: dict, tx2gene_path: str | None, aggregation_input_kind: str) -> pd.DataFrame:
     success_outputs = _get_success_outputs(run_result.get("outputs", []))
 
     if not success_outputs:
@@ -125,6 +124,13 @@ def run_counter_pipeline(
 
     # Quantifier execution via Registry (v0.7.0)
     quant = get_quantifier(quantifier)
+    capabilities = quant.get_capabilities()
+    
+    if capabilities.requires_tx2gene and not tx2gene:
+        raise ValueError(f"{quant.name} requires tx2gene_path for gene-level aggregation.")
+    if capabilities.requires_annotation_gtf and not annotation_gtf:
+        raise ValueError(f"{quant.name} requires annotation_gtf_path for execution.")
+
     run_result = quant.run_quant(
         sample_df=sample_df,
         run_output_dir=outdir,
@@ -138,7 +144,7 @@ def run_counter_pipeline(
     )
 
     # Aggregation entry point (v0.7.0)
-    g_nr_df = _build_gene_numreads_matrix(run_result, tx2gene)
+    g_nr_df = _build_gene_numreads_matrix(run_result, tx2gene, capabilities.aggregation_input_kind)
 
     matrix_path = counts_dir / "gene_numreads.tsv"
     g_nr_df.to_csv(matrix_path, sep="\t")
@@ -175,10 +181,7 @@ def run_counter_pipeline(
             "producer_version": "0.3.5",
             "quantifier": run_result["quantifier"],
             "quantifier_version": run_result.get("quantifier_version"),
-            "aggregation_input_kind": run_result.get(
-                "aggregation_input_kind",
-                "transcript_quant",
-            ),
+            "aggregation_input_kind": capabilities.aggregation_input_kind,
             "reference_context": run_result.get("reference_context", {}),
             "quantifier_index_path": str(quantifier_index),
             "tx2gene_path": str(tx2gene) if tx2gene else None,
@@ -203,10 +206,7 @@ def run_counter_pipeline(
         parameters={
             "quantifier": run_result["quantifier"],
             "quantifier_version": run_result.get("quantifier_version"),
-            "aggregation_input_kind": run_result.get(
-                "aggregation_input_kind",
-                "transcript_quant",
-            ),
+            "aggregation_input_kind": capabilities.aggregation_input_kind,
             "threads": threads,
             "strandedness_mode": assay_spec.strandedness or "Auto-detect",
             "profile": profile,
