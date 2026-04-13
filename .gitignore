@@ -21,6 +21,11 @@ work/
 output/
 *.log
 
+!tests/fixtures/contracts/**/results/
+!tests/fixtures/contracts/**/results/**
+!tests/fixtures/contracts/**/logs/
+!tests/fixtures/contracts/**/logs/**
+
 Mod_MEMO.txt
 MEMO.txt
 *.fastq
