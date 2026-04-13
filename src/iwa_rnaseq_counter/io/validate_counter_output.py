@@ -88,7 +88,7 @@ def validate_counter_output(outdir: str | Path) -> CounterContractValidationResu
 
     status = getattr(exec_run_spec, "status", "unknown") if exec_run_spec else "unknown"
     
-    if status == "completed":
+    if status in ("completed", "completed_with_errors"):
         # Success expectations
         if not matrix_spec_path.exists():
             _append_issue(issues, "error", "missing_matrix_spec", "MatrixSpec is missing despite 'completed' status", artifact_name="matrix_spec")
