@@ -1,0 +1,27 @@
+{
+  "run_id": "RUN_SUCCESS_FIXTURE",
+  "app_name": "iwa_rnaseq_counter",
+  "app_version": "0.3.5",
+  "started_at": "2024-04-12T10:00:00+09:00",
+  "input_refs": ["ASSAY_001"],
+  "output_refs": ["MAT_001"],
+  "parameters": {
+    "quantifier": "salmon",
+    "threads": 4,
+    "profile": "local"
+  },
+  "execution_backend": "local",
+  "finished_at": "2024-04-12T10:05:00+09:00",
+  "status": "completed",
+  "log_path": "logs/run.log",
+  "metadata": {
+    "status_detail": "completed successfully",
+    "output_generated": true
+  },
+  "preprocessing_steps": {
+    "qc": {"enabled": false, "status": "not_run"},
+    "trimming": {"enabled": false, "status": "not_run"}
+  },
+  "$schema_name": "ExecutionRunSpec",
+  "$schema_version": "0.1.0"
+}

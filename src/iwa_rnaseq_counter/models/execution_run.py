@@ -39,3 +39,32 @@ class ExecutionRunSpec:
             d["preprocessing_steps"] = steps_dict
             
         return {k: v for k, v in d.items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionRunSpec":
+        steps_raw = data.get("preprocessing_steps")
+        preprocessing_steps = None
+        if steps_raw and isinstance(steps_raw, dict):
+            preprocessing_steps = {
+                k: ExecutionStepRecord.from_dict(v) if isinstance(v, dict) else v
+                for k, v in steps_raw.items()
+            }
+            
+        return cls(
+            schema_name=data.get("$schema_name", data.get("schema_name", "")),
+            schema_version=data.get("$schema_version", data.get("schema_version", "")),
+            run_id=data.get("run_id", ""),
+            app_name=data.get("app_name", ""),
+            app_version=data.get("app_version", ""),
+            started_at=data.get("started_at", ""),
+            input_refs=data.get("input_refs", []) or [],
+            output_refs=data.get("output_refs", []) or [],
+            parameters=data.get("parameters", {}) or {},
+            execution_backend=data.get("execution_backend"),
+            finished_at=data.get("finished_at"),
+            status=data.get("status", "pending"),
+            log_path=data.get("log_path", ""),
+            metadata=data.get("metadata", {}) or {},
+            overlay=data.get("overlay", {}) or {},
+            preprocessing_steps=preprocessing_steps
+        )

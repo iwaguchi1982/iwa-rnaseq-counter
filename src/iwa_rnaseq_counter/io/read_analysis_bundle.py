@@ -47,11 +47,11 @@ class AnalysisBundlePaths:
     manifest_path: Path
     bundle_root: Path
     matrix_spec_path: Path
-    execution_run_spec_path: Path
     merged_matrix_path: Path
     aligned_sample_metadata_path: Path
     analysis_merge_summary_path: Path
     build_analysis_matrix_log_path: Path
+    execution_run_spec_path: Path | None = None
     feature_annotation_path: Path | None = None
 
 
@@ -60,10 +60,10 @@ class AnalysisBundle:
     manifest: dict[str, Any]
     paths: AnalysisBundlePaths
     matrix_spec: MatrixSpec
-    execution_run_spec: ExecutionRunSpec
     analysis_merge_summary: dict[str, Any]
     aligned_sample_metadata: pd.DataFrame
     contract_info: AnalysisBundleContractInfo
+    execution_run_spec: ExecutionRunSpec | None = None
     merged_matrix: pd.DataFrame | None = None
 
 
@@ -614,7 +614,7 @@ def resolve_analysis_bundle_paths(
             manifest,
             artifact_name="execution_run_spec",
             bundle_root=bundle_root,
-            required=True,
+            required=False,
         ),
         merged_matrix_path=_resolve_artifact_path(
             manifest, artifact_name="merged_matrix", bundle_root=bundle_root, required=True
@@ -676,7 +676,11 @@ def read_analysis_bundle(
     _raise_if_unsupported_analysis_bundle_contract(contract_info)
 
     matrix_spec = read_matrix_spec(paths.matrix_spec_path)
-    execution_run_spec = _read_execution_run_spec(paths.execution_run_spec_path)
+    
+    execution_run_spec = None
+    if paths.execution_run_spec_path:
+        execution_run_spec = _read_execution_run_spec(paths.execution_run_spec_path)
+        
     analysis_merge_summary = _read_json(paths.analysis_merge_summary_path)
     aligned_sample_metadata = _read_tabular_file(paths.aligned_sample_metadata_path)
 

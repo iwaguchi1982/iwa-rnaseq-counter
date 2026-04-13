@@ -1,0 +1,20 @@
+{
+  "matrix_id": "MAT_001",
+  "matrix_scope": "assay",
+  "matrix_kind": "count_matrix",
+  "feature_type": "gene",
+  "value_type": "integer",
+  "normalization": "raw",
+  "feature_id_system": "ensembl_gene_id",
+  "sample_axis": "specimen",
+  "matrix_path": "results/gene_numreads.tsv",
+  "source_assay_ids": ["ASSAY_001"],
+  "source_specimen_ids": ["SPEC_001"],
+  "source_subject_ids": ["SUB_001"],
+  "metadata": {
+    "producer_app": "iwa_rnaseq_counter",
+    "producer_version": "0.3.5"
+  },
+  "$schema_name": "MatrixSpec",
+  "$schema_version": "0.1.0"
+}

@@ -1,0 +1,29 @@
+{
+  "run_id": "RUN_FAILED_FIXTURE",
+  "app_name": "iwa_rnaseq_counter",
+  "app_version": "0.3.5",
+  "started_at": "2024-04-12T11:00:00+09:00",
+  "input_refs": ["ASSAY_002"],
+  "output_refs": [],
+  "parameters": {
+    "quantifier": "star",
+    "threads": 8,
+    "profile": "hpc"
+  },
+  "execution_backend": "hpc",
+  "finished_at": "2024-04-12T11:02:00+09:00",
+  "status": "failed",
+  "log_path": "logs/run.log",
+  "metadata": {
+    "failure_stage": "quantifier",
+    "failure_summary": "STAR binary not found",
+    "error_messages": ["Executable 'STAR' not found"],
+    "output_generated": false
+  },
+  "preprocessing_steps": {
+    "qc": {"enabled": true, "status": "completed"},
+    "trimming": {"enabled": true, "status": "failed", "error_summary": "Disk full"}
+  },
+  "$schema_name": "ExecutionRunSpec",
+  "$schema_version": "0.1.0"
+}

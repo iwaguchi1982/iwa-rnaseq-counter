@@ -23,6 +23,7 @@ from iwa_rnaseq_counter.io.read_analysis_bundle import (
     read_analysis_bundle,
     summarize_analysis_bundle_for_consumer,
 )
+from iwa_rnaseq_counter.io.validate_counter_output import validate_counter_output
 
 
 def setup_logging(level: str, logfile: Path | None = None) -> None:
@@ -181,6 +182,11 @@ def main():
     p_inspect.add_argument("--manifest", required=True, type=Path, help="Path to manifest or bundle directory")
     p_inspect.add_argument("--json", action="store_true", help="Output bundle summary as machine-readable JSON")
     p_inspect.add_argument("--log-level", type=str, default="WARNING")
+    
+    p_validate_out = subparsers.add_parser("validate-counter-output", help="Validate counter output artifacts (specs, matrix, logs)")
+    p_validate_out.add_argument("outdir", type=Path, help="Path to counter output directory")
+    p_validate_out.add_argument("--verbose", action="store_true", help="Show all warnings")
+    p_validate_out.add_argument("--log-level", type=str, default="INFO")
 
     args = parser.parse_args()
 
@@ -442,6 +448,25 @@ def main():
             print(f"Error: Failed to inspect bundle: {e}", file=sys.stderr)
             sys.exit(1)
 
+
+    elif args.command == "validate-counter-output":
+        setup_logging(args.log_level)
+        result = validate_counter_output(args.outdir)
+        
+        print(f"Validating counter output in: {args.outdir}")
+        print(result.summary())
+        
+        if result.issues:
+            print("\nIssues found:")
+            for issue in result.issues:
+                if issue.level == "error" or args.verbose:
+                    label = f"[{issue.level.upper()}]"
+                    print(f"{label} {issue.code}: {issue.message}")
+                    if issue.path:
+                        print(f"  Path: {issue.path}")
+
+        if not result.is_valid:
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()
