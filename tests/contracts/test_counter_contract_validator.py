@@ -64,7 +64,7 @@ def test_validate_completed_with_errors_is_success_equivalent(tmp_path):
         "app_name": "app",
         "app_version": "1.0",
         "started_at": "now",
-        "output_refs": {"matrix": "MAT_001"}
+        "output_refs": ["MAT_001"]
     }
     with open(outdir / "specs" / "execution-run.spec.json", "w") as f:
         json.dump(exec_spec, f)
